@@ -1,0 +1,6 @@
+test/
+vivado/
+ref/
+x86*
+benchmark/
+presentation/
