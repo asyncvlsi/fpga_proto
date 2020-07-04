@@ -36,6 +36,10 @@ struct fpga_config {
   std::vector<std::string> incx;  //vector of strings with
                                   //paths to the included xdc files
 
+  unsigned int print:1;           //print verilog
+                                  //0 - NO
+                                  //1 - YES
+
   unsigned int opt:2;             //0 - no ff/lut optimization
                                   //1 - basic ff/lut optimization
                                   //2 - ???

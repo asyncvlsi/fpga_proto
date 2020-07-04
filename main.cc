@@ -30,13 +30,25 @@ void usage () {
   logo();
   fprintf(stdout, "=============================================================================================\n\n");
   fprintf(stdout, "Usage: fpga_proto [-vOmghp] [-o <*.file>] [-t <*.tcl>] <*.act> 'process_name'\n");
-  fprintf(stdout, "-v - Print verilog (has higher priority than graph printing, so don't use them together);\n");
-  fprintf(stdout, "-O - Reduced number of flip-flops;\n");
   fprintf(stdout, "-p - Specify process name;\n");
-  fprintf(stdout, "-t - Append tcl file to generated tcl script (not supported yet);\n");
   fprintf(stdout, "-o - Save to the file rather then to the stdout;\n");
   fprintf(stdout, "-g - Print graph (for test purposes;\n");
   fprintf(stdout, "-h - Usage guide;\n\n");
+  fprintf(stdout, "=============================================================================================\n");
+  fprintf(stdout, "Configuration file description:\n");
+  fprintf(stdout, "VENDOR - 0 - Xilinx; 1 - Intel(Altera)\n");
+  fprintf(stdout, "CHIP - full chip name: Family, Package, Temp.grade, Speed grade etc.\n");
+  fprintf(stdout, "LUT - number of luts\n");
+  fprintf(stdout, "FF - number of flip-flops\n");
+  fprintf(stdout, "DSP - number of dsp blocks\n");
+  fprintf(stdout, "NUM - number of available chips\n");
+  fprintf(stdout, "FREQ - targeting frequency\n");
+  fprintf(stdout, "PINS - \n");
+  fprintf(stdout, "INTERFACE - 0 - NON; 1 - TileLink; 2 - AXI; 3 - UART\n");
+  fprintf(stdout, "INCLUDE_TCL - paths to additional tcl scripts\n");
+  fprintf(stdout, "INCLUDE_XDC - paths to additional xdc files\n");
+  fprintf(stdout, "OPTIMIZATION - 0 - ff per gate; 1 - reduced number of ffs\n");
+  fprintf(stdout, "VERILOG - 0 - no print; 1 - print verilog\n");
   fprintf(stdout, "=============================================================================================\n");
 }
 
@@ -59,16 +71,8 @@ int main (int argc, char **argv) {
   extern int opterr;
   opterr = 0;
 
-  while ((key = getopt (argc, argv, "p:hvOmc:o:t:g")) != -1) {
+  while ((key = getopt (argc, argv, "p:hmc:o:t:g")) != -1) {
     switch (key) {
-      case 'v':
-        print_or_not_to_print = 1;
-        break;
-      case 'O':
-        how_to_print = 1;
-        break;
-      case 't':
-        break;
       case 'c':
         conf = optarg;
         break;
@@ -141,8 +145,8 @@ int main (int argc, char **argv) {
     fc = fpga::read_config(conf_file, 0);
   } else {
     fc = fpga::read_config(conf_file, 1);
+    fclose(conf_file);
   }
-  fclose(conf_file);
 
   fprintf(stdout, "==========================================\n");
   fprintf(stdout, "\tBUILDING VERILOG PROJECT...\n");
@@ -156,7 +160,11 @@ int main (int argc, char **argv) {
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
   fprintf(stdout, "\tSATISFYING TIMING CONSTRAINTS...\n");
-  fpga::add_timing(fg, how_to_print);
+  if (fc->opt == 0) {
+    fpga::add_timing(fg, 0);
+  } else {
+    fpga::add_timing(fg, 1);
+  }
   fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
@@ -164,14 +172,14 @@ int main (int argc, char **argv) {
   fpga::add_md(fg);
   fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");
-  if (print_or_not_to_print == 1) {
+  if (fc->print == 1) {
     fprintf(stdout, "==========================================\n");
     fprintf(stdout, "\tPRINTING VERILOG...\n");
     fpga::print_verilog(fg, fout);
     fprintf(stdout, "------------------------------------------\n");
     fprintf(stdout, "\tDONE\n");
-    fprintf(stdout, "==========================================\n");
   }
+  fprintf(stdout, "==========================================\n");
   if (print_g == 1) {
     fpga::print_graph(fg, fout);
   }

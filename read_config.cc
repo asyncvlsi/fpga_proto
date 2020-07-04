@@ -23,6 +23,7 @@ fpga::fpga_config *read_config (FILE *conf_file, int func){
     fc->intf = 0;
     fc->inct.push_back("");
     fc->incx.push_back("");
+    fc->print = 1;
     fc->opt = 0;
 
   } else if (func == 1) {
@@ -86,6 +87,10 @@ fpga::fpga_config *read_config (FILE *conf_file, int func){
           val = strtok(NULL, "=");
           int_val = atoi(val);
           fc->opt = int_val;
+        } else if (strcmp(val, "VERILOG") == 0) {
+          val = strtok(NULL, "=");
+          int_val = atoi(val);
+          fc->print = int_val;
         } else {
           fatal_error("Unknown config parameter");
         }
@@ -93,8 +98,6 @@ fpga::fpga_config *read_config (FILE *conf_file, int func){
       }
     }
   }
-
-  print_config(fc, stdout);
 
   return fc;
 

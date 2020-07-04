@@ -258,7 +258,16 @@ void print_config (fpga_config *fc, FILE *output) {
   fprintf(output, "CHIP NUM: %i\n", fc->num);
   fprintf(output, "FREQ: %i\n", fc->freq);
   fprintf(output, "PINS: %i\n", fc->pins);
-  fprintf(output, "INTF: %i\n", fc->intf);
+  fprintf(output, "INTF: ");
+  if (fc->intf == 0) {
+    fprintf(output, "NON\n");
+  } else if (fc->intf == 1) {
+    fprintf(output, "TileLink\n");
+  } else if (fc->intf == 2) {
+    fprintf(output, "AXI\n");
+  } else if (fc->intf == 3) {
+    fprintf(output, "UART\n");
+  }
   fprintf(output, "INC TCL: ");
   for (auto path : fc->inct) {
     fprintf(output, "%s;", path.c_str());
