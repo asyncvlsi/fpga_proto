@@ -67,11 +67,12 @@ int check_path (port *p, std::vector<port *> path, int func) {
   return result;
 }
 
+
 //Function goes thought all nodes and gates 
 //inside the process node and collects them 
 //in the path vector. Once visited node/gate 
 //reached it calls check path to see if there 
-//registers already on the path.
+//are egisters already on the path.
 void break_cycle (node *n, port *p, std::vector<port *> &path) {
   int iport = 0;
   int oport = 0;
@@ -108,7 +109,6 @@ void break_cycle (node *n, port *p, std::vector<port *> &path) {
         }
         break_cycle(n, cp, path);
         path.pop_back();
-        return;
       }
     }
   } else if (p->owner == 1) {
@@ -136,7 +136,6 @@ void break_cycle (node *n, port *p, std::vector<port *> &path) {
           }
           break_cycle(n, cp, path);
           path.pop_back();
-          return;
         }
       }
     }
@@ -594,7 +593,7 @@ void add_timing (graph *g, int func) {
             p->delay = 1;
           } else {
             std::vector<port *> path;
-            break_cycle (n,cp, path);
+            break_cycle (n, cp, path);
           }
         }
       }

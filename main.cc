@@ -29,7 +29,7 @@ void usage () {
   fprintf(stdout, "=============================================================================================\n");
   logo();
   fprintf(stdout, "=============================================================================================\n\n");
-  fprintf(stdout, "Usage: fpga_proto [-vOmghp] [-o <*.file>] [-t <*.tcl>] <*.act> 'process_name'\n");
+  fprintf(stdout, "Usage: fpga_proto [-gh] [-p <process_name>] [-o <*.file>] [-t <*.tcl>] <*.act>\n");
   fprintf(stdout, "-p - Specify process name;\n");
   fprintf(stdout, "-o - Save to the file rather then to the stdout;\n");
   fprintf(stdout, "-g - Print graph (for test purposes;\n");
