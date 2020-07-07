@@ -161,9 +161,9 @@ int main (int argc, char **argv) {
   fprintf(stdout, "==========================================\n");
   fprintf(stdout, "\tSATISFYING TIMING CONSTRAINTS...\n");
   if (fc->opt == 0) {
-    fpga::add_timing(fg, 0);
+    fpga::add_timing(fg, fc->opt);
   } else {
-    fpga::add_timing(fg, 1);
+    fpga::add_timing(fg, fc->opt);
   }
   fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");

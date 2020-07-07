@@ -40,10 +40,9 @@ struct fpga_config {
                                   //0 - NO
                                   //1 - YES
 
-  unsigned int opt:2;             //0 - no ff/lut optimization
+  unsigned int opt;               //0 - no ff/lut optimization
                                   //1 - basic ff/lut optimization
-                                  //2 - ???
-                                  //3 - ???
+                                  //>1 - every Nth gate is ff
 };
 
 struct node;

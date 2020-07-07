@@ -165,12 +165,15 @@ void print_arb (graph *g, FILE *output) {
 void print_path (std::vector<port *> &path, FILE *output) {
   for (auto pp : path) {
     if (pp->owner == 0) {
-      fprintf(output, "%s->", pp->u.p.n->proc->getName());
+      fprintf(output, "%s", pp->u.p.n->proc->getName());
     } else if (pp->owner == 1) {
-      fprintf(output, "%s->", pp->u.i.in->inst_name->getName());
+      fprintf(output, "%s", pp->u.i.in->inst_name->getName());
     } else if (pp->owner == 2) {
-      fprintf(output, "%s->", pp->u.g.g->id->getName());
+      fprintf(output, "%s(%i)", pp->u.g.g->id->getName(), pp->u.g.g->type);
     }
+    fprintf(output, "(");
+    pp->c->toid()->Print(output);
+    fprintf(output, ")->");
   }
   fprintf(output, "\n");
 }

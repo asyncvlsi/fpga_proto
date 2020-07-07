@@ -57,17 +57,110 @@ int check_path (port *p, std::vector<port *> path, int func) {
     if (check == 1) {
       if (pp->owner == 2) {
         if (pp->u.g.g->type != 0) {
-          result = 1;
+          return 1;
         }
       } else {
         return 1;
       }
     }
   }
-  return result;
+  return 0;
 }
 
+//Function goes thought all nodes and gates 
+//inside the process node and collects them 
+//in the path vector. Once visited node/gate 
+//reached it calls check path to see if there 
+//are egisters already on the path.
+void break_cycle (node *n, port *p, std::vector<port *> &path, int func, int cur) {
+  int iport = 0;
+  int oport = 0;
+  int cnt = cur;
+  if (p->owner == 2) {
+    if (p->u.g.g->visited == 1) {
+      port *op = p->u.g.g->p[0];
+      path.push_back(op);
+      if (check_path(op, path, 0) == 0) {
+        p->u.g.g->type = 1;
+      }
+      path.pop_back();
+      return;
+    } else {
+      p->u.g.g->visited = 1;
+      for (auto ip : p->u.g.g->p) {
+        if (ip->c == p->c) {
+          break;
+        }
+        iport++;
+      }
+      oport = p->u.g.g->io_map[iport];
+      port *op = p->u.g.g->p[oport];
+      path.push_back(op);
+      for (auto cp : n->cp[op->c]) {
+        if (cmp_owner(op,cp) == 1) {
+          continue;
+        }
+        if (func > 1) {
+          ++cnt;
+        }
+        if (func > 1 && cnt == func) {
+          if (op->u.g.g->type != 2) {
+            op->u.g.g->type = 1;
+              cnt = 0;
+          }
+        }
 
+        if (cp->owner == 0) {
+          if (cp->u.p.n == n) {
+            if (check_path(cp, path,1) == 0 && 
+                        p->u.g.g->type == 0) {
+              p->u.g.g->type = 1;
+              cnt = 0;
+              continue;
+            }
+          }
+        }
+        break_cycle(n, cp, path, func, cnt);
+        if (func > 1) {
+          --cnt;
+        }
+      }
+      path.pop_back();
+    }
+  } else if (p->owner == 1) { 
+    if (p->u.i.in->visited == 1) {
+      return;
+    } else {
+      if (func > 1) {
+        cnt = 0;
+      }
+      p->u.i.in->visited = 1;
+      for (auto ip : p->u.i.in->p) {
+        if (ip->c == p->c) {
+          break;
+        }
+        iport++;
+      }
+      for (auto oport : p->u.i.in->n->io_map[iport]) {
+        port *op = p->u.i.in->p[oport];
+        path.push_back(op);
+        for (auto cp : n->cp[op->c]) {
+          if (cmp_owner(op,cp) == 1) {
+            continue;
+          }
+          if (cp->owner == 0) {
+            if (cp->u.p.n == n) {
+              continue;
+            }
+          }
+          break_cycle(n, cp, path, func, cnt);
+        }
+        path.pop_back();
+      }
+    }
+  }
+}
+/*
 //Function goes thought all nodes and gates 
 //inside the process node and collects them 
 //in the path vector. Once visited node/gate 
@@ -141,7 +234,7 @@ void break_cycle (node *n, port *p, std::vector<port *> &path) {
     }
   }
 }
-
+*/
 //Function to traverse graph and compute delays
 //from inputs to outputs
 void find_delay (node *n, port *sp, port *p, int &min, int &max) {
@@ -592,8 +685,9 @@ void add_timing (graph *g, int func) {
           if (cmp_owner(p,cp) == 1 && cp->dir == 0) {
             p->delay = 1;
           } else {
+            int cur = 0;
             std::vector<port *> path;
-            break_cycle (n, cp, path);
+            break_cycle(n, cp, path, func, cur);
           }
         }
       }
