@@ -1,4 +1,4 @@
-#include <act/proto.h>
+#include <act/fpga_proto.h>
 #include <vector>
 #include <map>
 #include <string.h>
@@ -587,7 +587,20 @@ void print_verilog (graph *g, FILE *output) {
       }
       for (auto gn = n->gh; gn; gn = gn->next) {
         if (gn->drive_type == 0) {
-          if (gn->type == 0) {
+          if (gn->type == 2) {
+            fprintf(output, "reg  \\");
+            gn->id->Print(output);
+            print_flag_ending(gn->p[0], output);
+            fprintf(output, "_reg = 0 ;\n");
+            fprintf(output, "always @(posedge clock)\n\t\\");
+            gn->id->Print(output);
+            print_flag_ending(gn->p[0], output);
+            fprintf(output, "_reg <= \\");
+            gn->id->Print(output);
+            print_flag_ending(gn->p[0], output);
+            fprintf(output, " ;\n\n"); 
+          }
+          if (gn->type == 0 || gn->type == 2) {
             fprintf(output, "always @(*)\n");
           } else  {
             fprintf(output, "always @(posedge \\clock )\n");
@@ -623,12 +636,20 @@ void print_verilog (graph *g, FILE *output) {
             fprintf(output, " <= \\");
             gn->id->Print(output);
             print_flag_ending(gn->p[0], output);
+            fprintf(output, "_reg ;");
+          } else if (gn->type == 3) {
+            fprintf(output, "\telse \\");
+            gn->id->Print(output);
+            print_flag_ending(gn->p[0], output);
+            fprintf(output, " <= \\");
+            gn->id->Print(output);
+            print_flag_ending(gn->p[0], output);
             fprintf(output, " ;");
           }
           fprintf(output, "\n\n");
         } else if (gn->drive_type == 1) {
           for (auto i = 0; i < 4; i++) {
-            if (gn->type == 0) {
+            if (gn->type == 0 || gn->type == 2) {
               fprintf(output, "always @ (*)\n");
             } else {
               fprintf(output, "always @ (posedge \\clock )\n");

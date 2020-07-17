@@ -1,13 +1,10 @@
-#include <act/proto.h>
 #include <string.h>
+#include <act/fpga_config.h>
+#include <act/act.h>
 
 namespace fpga {
 
-int string_to_int(char *st) {
-  
-}
-
-fpga::fpga_config *read_config (FILE *conf_file, int func){
+fpga_config *read_config (FILE *conf_file, int func){
   fpga_config *fc = new fpga_config;
 
   if (func == 0) {

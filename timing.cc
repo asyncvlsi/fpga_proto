@@ -1,7 +1,7 @@
 #include <vector>
 #include <string.h>
 #include <utility>
-#include <act/proto.h>
+#include <act/fpga_proto.h>
 
 namespace fpga {
 
@@ -56,7 +56,7 @@ int check_path (port *p, std::vector<port *> path, int func) {
     }
     if (check == 1) {
       if (pp->owner == 2) {
-        if (pp->u.g.g->type != 0) {
+        if (pp->u.g.g->type == 1 || pp->u.g.g->type == 3) {
           return 1;
         }
       } else {
@@ -85,6 +85,8 @@ void break_cycle (node *n, port *p, std::vector<port *> &path, int func, int cur
       }
       path.pop_back();
       return;
+    } else if (p->u.g.g->visited == 2) {
+      return;
     } else {
       p->u.g.g->visited = 1;
       for (auto ip : p->u.g.g->p) {
@@ -104,17 +106,22 @@ void break_cycle (node *n, port *p, std::vector<port *> &path, int func, int cur
           ++cnt;
         }
         if (func > 1 && cnt == func) {
-          if (op->u.g.g->type != 2) {
+          if (op->u.g.g->type < 2) {
             op->u.g.g->type = 1;
-              cnt = 0;
+          } else if (op->u.g.g->type > 1) {
+            op->u.g.g->type = 3;
           }
+          cnt = 0;
         }
 
         if (cp->owner == 0) {
           if (cp->u.p.n == n) {
-            if (check_path(cp, path,1) == 0 && 
-                        p->u.g.g->type == 0) {
-              p->u.g.g->type = 1;
+            if (check_path(cp, path,1) == 0) {
+              if (p->u.g.g->type == 0) {
+                p->u.g.g->type = 1;
+              } else if (p->u.g.g->type == 2) {
+                p->u.g.g->type = 3;
+              }
               cnt = 0;
               continue;
             }
@@ -126,9 +133,10 @@ void break_cycle (node *n, port *p, std::vector<port *> &path, int func, int cur
         }
       }
       path.pop_back();
+      p->u.g.g->visited = 2;
     }
   } else if (p->owner == 1) { 
-    if (p->u.i.in->visited == 1) {
+    if (p->u.i.in->visited == 1 || p->u.i.in->visited == 2) {
       return;
     } else {
       if (func > 1) {
@@ -157,6 +165,7 @@ void break_cycle (node *n, port *p, std::vector<port *> &path, int func, int cur
         }
         path.pop_back();
       }
+      p->u.i.in->visited = 2;
     }
   }
 }
@@ -664,6 +673,8 @@ void all_regs (node *n) {
   for (auto gn = n->gh; gn; gn = gn->next) {
     if (gn->type == 0) {
       gn->type = 1;
+    } else if (gn->type == 2) {
+      gn->type = 3;
     }
   }
 }
@@ -701,6 +712,7 @@ void add_timing (graph *g, int func) {
       process_time_spec(n);
     }
   }
+
 }
 
 }

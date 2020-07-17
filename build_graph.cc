@@ -1,12 +1,12 @@
-#include <act/iter.h>
 #include <string.h>
 #include <map>
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <act/fpga_proto.h>
 #include <act/passes/booleanize.h>
 #include <act/passes/netlist.h>
-#include <act/proto.h>
+#include <act/iter.h>
 
 namespace fpga {
 
@@ -548,7 +548,9 @@ void add_proc_ports (Scope *cs, act_boolean_netlist_t *bnl, node *pn) {
   }
  
   //adding global ports to process node
+  fprintf(stdout, "%s\n", pn->proc->getName());
   for (int i = 0; i < A_LEN(bnl->used_globals); i++) {
+    fprintf(stdout, "HERE\n");
     port *fgp = new port;
     fgp->c = bnl->used_globals[i]->toid()->Canonical(cs);
     fgp->dir = 1;
@@ -608,6 +610,7 @@ void build_fpga_project (Process *p, graph *g) {
   pn->i_num = 0;
   pn->g_num = 0;
   pn->copy = 0;
+  pn->weight = 0;
 
   add_proc_ports(cs,bnl,pn);
   add_instances(cs,bnl,pn);
@@ -625,7 +628,7 @@ void build_fpga_project (Process *p, graph *g) {
 
 }
 
-fpga::graph * create_fpga_project (Act *a, Process *p) {
+graph * create_fpga_project (Act *a, Process *p) {
   ActPass *apb = a->pass_find("booleanize");
   ActPass *apn = a->pass_find("prs2net");
 

@@ -1,4 +1,4 @@
-#include <act/proto.h>
+#include <act/fpga_proto.h>
 
 //This part works on the multi drivers
 //either nested or neighboring
@@ -155,6 +155,7 @@ node *copy_node (node *n){
   cn->extra_node = extra_num;
   ++extra_num;
   cn->copy = 1;
+  cn->weight = 0;
   for (auto pp : n->p) {
     port *cpp;
     cpp = copy_port(pp);
@@ -235,6 +236,7 @@ node *create_extra_node (std::vector<port *> &p) {
   node *pn = new node;
   pn->proc = NULL;
   pn->visited = 1;
+  pn->weight = 0;
   pn->extra_node = extra_num;
   for (auto pp : p) {
     port *ep = new port;

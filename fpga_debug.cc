@@ -1,4 +1,5 @@
-#include <act/proto.h>
+#include <act/fpga_proto.h>
+#include <act/fpga_debug.h>
 
 namespace fpga {
 
@@ -28,6 +29,8 @@ void print_graph (graph *g, FILE *output){
                                           pp->delay, pp->forced,
                                           pp->owner);
     }
+    fprintf(output, "\n");
+    fprintf(output, "WEIGHT: %i\n", n->weight);
     fprintf(output, "\n");
     fprintf(output, "IO MAP:\n");
     fprintf(output, "\n");
@@ -66,7 +69,7 @@ void print_graph (graph *g, FILE *output){
     for (auto nn = n->gh; nn; nn = nn->next) {
       fprintf(output, "\t");
       fprintf(output, "%s", nn->id->getName());
-      if (nn->extra_gate != 0) {
+      if (nn->extra_gate == 0) {
         fprintf(output,"(%i,%i,%i,%i,%i,%i,%i)", nn->type, nn->drive_type,
                                               nn->p_up.size(),nn->p_dn.size(),
                                               nn->w_p_up.size(),nn->w_p_dn.size(),

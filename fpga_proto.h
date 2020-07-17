@@ -1,49 +1,9 @@
-#define DEBUG
-
 #include <vector>
 #include <map>
 #include <utility>
 #include <act/act.h>
 
 namespace fpga {
-
-struct fpga_config {
-  unsigned int vendor:2;          //0 - Xilinx; 1 - Intel; 2 - ?; 3 - ?
-
-  std::string chip;               //chip id
-
-  unsigned int num;               //number of available chips
-
-  unsigned int lut;               //number of luts in the chip
-
-  unsigned int ff;                //number of flip-flops in the chip
-
-  unsigned int dsp;               //number of DSP blocks
-
-  unsigned int freq;              //targeting clock frequency MHz
-
-  unsigned int pins;              //number of io pins on the chip
-
-  unsigned int intf:2;            //unterface:
-                                  //0 - non
-                                  //1 - TileLink
-                                  //2 - AXI
-                                  //3 - UART
-
-  std::vector<std::string> inct;  //vector of strings with
-                                  //paths to the included tcl files
-
-  std::vector<std::string> incx;  //vector of strings with
-                                  //paths to the included xdc files
-
-  unsigned int print:1;           //print verilog
-                                  //0 - NO
-                                  //1 - YES
-
-  unsigned int opt;               //0 - no ff/lut optimization
-                                  //1 - basic ff/lut optimization
-                                  //>1 - every Nth gate is ff
-};
 
 struct node;
 struct inst_node;
@@ -88,7 +48,7 @@ struct inst_node {
   std::map<int, std::vector<int> > io_map;  //map input ports to all outputs
                                             //(copy from the original node)
 
-  unsigned int visited:1;
+  unsigned int visited:2;
 
   unsigned int extra_inst;    //0 - not used;
                               //!0 - inst didn't exist in the original circuit
@@ -102,13 +62,14 @@ struct gate {
   unsigned int type:2;                  //0 - comb;
                                         //1 - seq; 
                                         //2 - state-holding short;
+                                        //3 - state-holding long;
 
   unsigned int drive_type:3;            //0 - orig; 1 - md master;
                                         //          2 - multiplexer;
 
   unsigned int is_weak:1;               //0 - regular; 1 - weak;
 
-  unsigned int visited:1;
+  unsigned int visited:2;
 
   unsigned int extra_gate;
 
@@ -129,10 +90,12 @@ struct gate {
 struct node {
   Process *proc;            //original process
 
-  unsigned int visited:1;     //0 - no; 1 - yes
+  unsigned int visited:2;     //0 - no; 1 - yes
   unsigned int extra_node;    //0 - not used; 
                               //1 - node didn't exist in the original circuit
   unsigned int copy:1;        //0 - original node; 1 - modified copy
+
+  unsigned int weight;        //node weight for area estimation
 
   std::vector<port *> p;    //local ports
   std::vector<port *> gp;   //global ports
@@ -162,7 +125,7 @@ struct graph {
   node *hd, *tl;
 };
 
-fpga_config *read_config(FILE *, int);
+//fpga_config *read_config(FILE *, int);
 int cmp_owner(port *, port *);
 graph *create_fpga_project (Act *, Process *);
 void add_arb (graph *);
@@ -170,15 +133,10 @@ void add_timing (graph *, int);
 void add_md (graph *);
 void print_verilog (graph *, FILE *);
 
-#ifdef DEBUG
-void print_graph (graph *, FILE *);
-void print_cp (graph *, FILE *);
-void print_io (graph *, FILE *);
-void print_owner (port *, FILE *);
-void print_arb (graph *, FILE *);
-void print_path (std::vector<port *> &path, FILE *);
-void print_gate (gate *, FILE *);
-void print_node (node *, FILE *);
-void print_config (fpga_config *, FILE *);
-#endif
 }
+
+#include "fpga_config.h"
+#include "fpga_pre_syn.h"
+#include "fpga_debug.h"
+
+

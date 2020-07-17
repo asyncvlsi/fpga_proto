@@ -1,6 +1,6 @@
 #include <vector>
 #include <string.h>
-#include <act/proto.h>
+#include <act/fpga_proto.h>
 
 namespace fpga{
 

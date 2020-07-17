@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <act/act.h>
-#include <act/proto.h>
+#include <act/fpga_proto.h>
 #include <act/passes/booleanize.h>
 #include <act/passes/netlist.h>
 
@@ -29,10 +29,10 @@ void usage () {
   fprintf(stdout, "=============================================================================================\n");
   logo();
   fprintf(stdout, "=============================================================================================\n\n");
-  fprintf(stdout, "Usage: fpga_proto [-gh] [-p <process_name>] [-o <*.file>] [-t <*.tcl>] <*.act>\n");
+  fprintf(stdout, "Usage: fpga_proto [-h] [-p <process_name>] [-o <*.file>] [-c <*.conf>] <*.act>\n");
   fprintf(stdout, "-p - Specify process name;\n");
-  fprintf(stdout, "-o - Save to the file rather then to the stdout;\n");
-  fprintf(stdout, "-g - Print graph (for test purposes;\n");
+  fprintf(stdout, "-o - Save to the file(default stdout);\n");
+  fprintf(stdout, "-c - Specify config file;\n");
   fprintf(stdout, "-h - Usage guide;\n\n");
   fprintf(stdout, "=============================================================================================\n");
   fprintf(stdout, "Configuration file description:\n");
@@ -43,7 +43,7 @@ void usage () {
   fprintf(stdout, "DSP - number of dsp blocks\n");
   fprintf(stdout, "NUM - number of available chips\n");
   fprintf(stdout, "FREQ - targeting frequency\n");
-  fprintf(stdout, "PINS - \n");
+  fprintf(stdout, "PINS - number of available pins on the chip\n");
   fprintf(stdout, "INTERFACE - 0 - NON; 1 - TileLink; 2 - AXI; 3 - UART\n");
   fprintf(stdout, "INCLUDE_TCL - paths to additional tcl scripts\n");
   fprintf(stdout, "INCLUDE_XDC - paths to additional xdc files\n");
@@ -62,7 +62,6 @@ int main (int argc, char **argv) {
   int print_or_not_to_print = 0; //that is the question
   int how_to_print = 0;
   int where_to_print = 0;
-  int print_g = 0;
   FILE *fout  = stdout;
   char *conf = NULL;
 
@@ -71,16 +70,13 @@ int main (int argc, char **argv) {
   extern int opterr;
   opterr = 0;
 
-  while ((key = getopt (argc, argv, "p:hmc:o:t:g")) != -1) {
+  while ((key = getopt (argc, argv, "p:hmc:o:t:")) != -1) {
     switch (key) {
       case 'c':
         conf = optarg;
         break;
       case 'o':
         fout  = fopen(optarg, "w");
-        break;
-      case 'g':
-        print_g = 1;
         break;
       case 'h':
         usage();
@@ -152,6 +148,8 @@ int main (int argc, char **argv) {
   fprintf(stdout, "\tBUILDING VERILOG PROJECT...\n");
 	fg = fpga::create_fpga_project(a,p);
   fprintf(stdout, "------------------------------------------\n");
+  fpga::check_io(fc, fg->hd);
+  fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
   fprintf(stdout, "\tPLACING EXCLUSION MODULES...\n");
@@ -160,11 +158,13 @@ int main (int argc, char **argv) {
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
   fprintf(stdout, "\tSATISFYING TIMING CONSTRAINTS...\n");
+  print_graph(fg, fout);
   if (fc->opt == 0) {
     fpga::add_timing(fg, fc->opt);
   } else {
     fpga::add_timing(fg, fc->opt);
   }
+  print_graph(fg, fout);
   fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
@@ -180,8 +180,5 @@ int main (int argc, char **argv) {
     fprintf(stdout, "\tDONE\n");
   }
   fprintf(stdout, "==========================================\n");
-  if (print_g == 1) {
-    fpga::print_graph(fg, fout);
-  }
   return 0;
 }
