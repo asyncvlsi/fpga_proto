@@ -789,10 +789,10 @@ void print_verilog (graph *g, FILE *output) {
           }
           fprintf(output, "\n\n");
         } else if (gn->drive_type == 2) {
-          fprintf(output, "reg \\");
-          gn->id->Print(output);
-          fprintf(output, "_reg = 0");
-          fprintf(output, " ;\n\n");
+//          fprintf(output, "reg \\");
+//          gn->id->Print(output);
+//          fprintf(output, "_reg = 0");
+//          fprintf(output, " ;\n\n");
           fprintf(output, "always @ (*)\n");
           for (auto i = 0; i < 4; i++) {
             if (i == 0) {
@@ -818,11 +818,11 @@ void print_verilog (graph *g, FILE *output) {
               fprintf(output, " <= 1'b0;\n");
             }
           }
-          fprintf(output, "else \\");
-          gn->id->Print(output);
-          fprintf(output, " <= \\");
-          gn->id->Print(output);
-          fprintf(output, "_reg ;");
+ //         fprintf(output, "else \\");
+ //         gn->id->Print(output);
+ //         fprintf(output, " <= \\");
+ //         gn->id->Print(output);
+ //         fprintf(output, "_reg ;");
           fprintf(output, "\n");
         }
       }
