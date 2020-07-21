@@ -158,13 +158,11 @@ int main (int argc, char **argv) {
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
   fprintf(stdout, "\tSATISFYING TIMING CONSTRAINTS...\n");
-  print_graph(fg, fout);
   if (fc->opt == 0) {
     fpga::add_timing(fg, fc->opt);
   } else {
     fpga::add_timing(fg, fc->opt);
   }
-  print_graph(fg, fout);
   fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");

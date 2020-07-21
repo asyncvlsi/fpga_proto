@@ -325,47 +325,158 @@ void print_arb_hi(FILE *output) {
   fprintf(output, "endmodule\n\n");
 }
 
-void inst_arb_hi(std::vector<port *> &fp, FILE *output){
-  int len = 0;
-  len = fp.size();
-  fprintf(output, "\\arb_hi #(.ARB_NUM(%i))\n",len);
-  fprintf(output, "\\arb_%i\n(\n", arb_num);
-  fprintf(output, "\t.in({");
-  for (auto i = 0; i < len; i++) {
-    fprintf(output, "\\");
-    fp[i]->c->toid()->Print(output);
-    if (fp[i]->delay != 0) {
-      fprintf(output, "_delay");
-    }
-    fprintf(output, "_forced");
-    if (i < len -1) {
-      fprintf(output, " ,");
-    }
-  }
-  fprintf(output, " }),\n");
-  fprintf(output ,"\t.out({");
-  for (auto i = 0; i < len; i++) {
-    fprintf(output, "\\");
-    fp[i]->c->toid()->Print(output);
-    if (fp[i]->delay != 0) {
-      fprintf(output, "_delay");
-    }
-    if (i < len -1) {
-      fprintf(output, " ,");
-    }
-  }
-  fprintf(output, " })\n");
-  fprintf(output, ")\n\n");
-  arb_num++;
+void print_fair_hi(FILE *output){
+fprintf(output, "module fair_hi #(\n");
+fprintf(output, "\tparameter   WIDTH = 8\n");
+fprintf(output, ")(\n");
+fprintf(output, "\t\tinput   clock,\n");
+fprintf(output, "\t\tinput   reset,\n");
+fprintf(output, "\t\tinput   [WIDTH-1:   0]  req,\n");
+fprintf(output, "\t\toutput  [WIDTH-1:   0]  grant\n");
+fprintf(output, "\t);\n");
+fprintf(output, "\t\n");
+fprintf(output, "reg\t[WIDTH-1:0]\tpriority [0:WIDTH-1];\n");
+fprintf(output, "\n");
+fprintf(output, "reg\t[WIDTH-1:0]\treq_d;\n");
+fprintf(output, "wire\t[WIDTH-1:0]\treq_neg;\n");
+fprintf(output, "\n");
+fprintf(output, "wire shift_prio;\n");
+fprintf(output, "\n");
+fprintf(output, "wire [WIDTH-1:0] match;\n");
+fprintf(output, "reg [WIDTH-1:0] arb_match;\n");
+fprintf(output, "\n");
+fprintf(output, "always @(posedge clock)\n");
+fprintf(output, "if (reset)\n");
+fprintf(output, "\treq_d <=  0;\n");
+fprintf(output, "else\n");
+fprintf(output, "\treq_d <= req;\n");
+fprintf(output, "\n");
+fprintf(output, "assign shift_prio = |(req_neg & priority[0]) & !(|arb_match);\n");
+fprintf(output, "\t\n");
+fprintf(output, "genvar j;\n");
+fprintf(output, "genvar i;\n");
+fprintf(output, "\n");
+fprintf(output, "generate\n");
+fprintf(output, "for (j = WIDTH; j > 0; j = j-1) begin    \n");
+fprintf(output, "\n");
+fprintf(output, "always @ (*)\n");
+fprintf(output, "if (j > 1)\n");
+fprintf(output, "\tif (match[j-1] & &(!match[j-2:0]))\tarb_match[j-1] <= 1'b1;\n");
+fprintf(output, "\telse\t\t\t\t\t\t\t\tarb_match[j-1] <= 1'b0;\n");
+fprintf(output, "else\n");
+fprintf(output, "\tif (match[j-1])\tarb_match[j-1]	<= 1'b1;\n");
+fprintf(output, "\telse\t\t\tarb_match[j-1]	<= 1'b0;\n");
+fprintf(output, "end\n");
+fprintf(output, "endgenerate\n");
+fprintf(output, "\n");
+fprintf(output, "generate\n");
+fprintf(output, "for (j = 0; j < WIDTH; j = j+1) begin\n");
+fprintf(output, "\n");
+fprintf(output, "assign req_neg[j] = !req[j] & req_d[j];\n");
+fprintf(output, "\n");
+fprintf(output, "assign grant = req & priority[0];\n");
+fprintf(output, "\n");
+fprintf(output, "assign match[j] = |(req & priority[j]);\n");
+fprintf(output, "\n");
+fprintf(output, "always @(posedge clock)\n");
+fprintf(output, "if (reset)\n");
+fprintf(output, "\tpriority[j] <= {{j{1'b0}},1'b1,{(WIDTH-1-j){1'b0}}};\n");
+fprintf(output, "else if (shift_prio)\n");
+fprintf(output, "\tif (priority[j] == 1)\n");
+fprintf(output, "\t\tpriority[j] <= {1'b1, {(WIDTH-1){1'b0}}};\n");
+fprintf(output, "\telse\n");
+fprintf(output, "\t\tpriority[j] <= priority[j] >> 1;\n");
+fprintf(output, "else if (arb_match[j]) begin\n");
+fprintf(output, "\tpriority[0] <= priority[j];\n");
+fprintf(output, "\tpriority[j] <= priority[0];\n");
+fprintf(output, "end\n");
+fprintf(output, "\t\n");
+fprintf(output, "end\n");
+fprintf(output, "endgenerate\n");
+fprintf(output, "\t\n");
+fprintf(output, "endmodule\n");
+}
+
+void print_fair_lo(FILE *output){
+fprintf(output, "module fair_lo #(\n");
+fprintf(output, "\tparameter   WIDTH = 8\n");
+fprintf(output, ")(\n");
+fprintf(output, "\t\tinput   clock,\n");
+fprintf(output, "\t\tinput   reset,\n");
+fprintf(output, "\t\tinput   [WIDTH-1:   0]  req,\n");
+fprintf(output, "\t\toutput  [WIDTH-1:   0]  grant\n");
+fprintf(output, "\t);\n");
+fprintf(output, "\t\n");
+fprintf(output, "reg [WIDTH-1:0] priority [0:WIDTH-1];\n");
+fprintf(output, "\n");
+fprintf(output, "reg  [WIDTH-1:0] req_d;\n");
+fprintf(output, "wire [WIDTH-1:0] req_pos;\n");
+fprintf(output, "\n");
+fprintf(output, "wire shift_prio;\n");
+fprintf(output, "\n");
+fprintf(output, "wire [WIDTH-1:0] match;\n");
+fprintf(output, "reg [WIDTH-1:0] arb_match;\n");
+fprintf(output, "\n");
+fprintf(output, "\n");
+fprintf(output, "always @(posedge clock)\n");
+fprintf(output, "if (reset)\n");
+fprintf(output, "\treq_d <=  {WIDTH{1'b1}};\n");
+fprintf(output, "else\n");
+fprintf(output, "\treq_d <= req;\n");
+fprintf(output, "\n");
+fprintf(output, "assign shift_prio = |(req_pos & priority[0]) & !(|arb_match);\n");
+fprintf(output, "\t\n");
+fprintf(output, "genvar j;\n");
+fprintf(output, "genvar i;\n");
+fprintf(output, "\n");
+fprintf(output, "generate\n");
+fprintf(output, "for (j = WIDTH; j > 0; j = j-1) begin    \n");
+fprintf(output, "\n");
+fprintf(output, "always @ (*)\n");
+fprintf(output, "if (j > 1)\n");
+fprintf(output, "\tif (match[j-1] & &(~match[j-2:0]))\tarb_match[j-1] <= 1'b1;\n");
+fprintf(output, "\telse\t\t\t\t\t\t\t\tarb_match[j-1] <= 1'b0;\n");
+fprintf(output, "else\n");
+fprintf(output, "\tif (match[j-1])\tarb_match[j-1]	<= 1'b1;\n");
+fprintf(output, "\telse\t\t\tarb_match[j-1]	<= 1'b0;\n");
+fprintf(output, "end\n");
+fprintf(output, "endgenerate\n");
+fprintf(output, "\n");
+fprintf(output, "generate\n");
+fprintf(output, "for (j = 0; j < WIDTH; j = j+1) begin\n");
+fprintf(output, "\n");
+fprintf(output, "assign req_pos[j] = req[j] & !req_d[j];\n");
+fprintf(output, "\n");
+fprintf(output, "assign grant = ~(~req & priority[0]);\n");
+fprintf(output, "\n");
+fprintf(output, "assign match[j] = |(~req & priority[j]);\n");
+fprintf(output, "\n");
+fprintf(output, "always @(posedge clock)\n");
+fprintf(output, "if (reset)\n");
+fprintf(output, "\tpriority[j] <= {{j{1'b0}},1'b1,{(WIDTH-1-j){1'b0}}};\n");
+fprintf(output, "else if (shift_prio)\n");
+fprintf(output, "\tif (priority[j] == 1)\n");
+fprintf(output, "\t\tpriority[j] <= {1'b1, {(WIDTH-1){1'b0}}};\n");
+fprintf(output, "\telse\n");
+fprintf(output, "\t\tpriority[j] <= priority[j] >> 1;\n");
+fprintf(output, "else if (arb_match[j]) begin\n");
+fprintf(output, "\tpriority[0] <= priority[j];\n");
+fprintf(output, "\tpriority[j] <= priority[0];\n");
+fprintf(output, "end\n");
+fprintf(output, "\t\n");
+fprintf(output, "end\n");
+fprintf(output, "endgenerate\n");
+fprintf(output, "\t\n");
+fprintf(output, "endmodule\n");
 }
 
 void inst_arb(int dir, std::vector<port *> &fp, FILE *output){
   int len = 0;
   len = fp.size();
   if (dir == 1) {
-    fprintf(output, "\\arb_lo #(.ARB_NUM(%i))\n",len);
+    fprintf(output, "\\fair_lo #(.ARB_NUM(%i))\n",len);
   } else {
-    fprintf(output, "\\arb_hi #(.ARB_NUM(%i))\n",len);
+    fprintf(output, "\\fair_hi #(.ARB_NUM(%i))\n",len);
   }
   fprintf(output, "\\arb_%i\n(\n", arb_num);
   fprintf(output, "\t.in({");
@@ -420,10 +531,10 @@ void print_verilog (graph *g, FILE *output) {
     print_ff(output);
   }
   if (flag_arb_hi == 1) {
-    print_arb_hi(output);
+    print_fair_hi(output);
   }
   if (flag_arb_lo == 1) {
-    print_arb_lo(output);
+    print_fair_lo(output);
   }
 
   for (auto n = g->hd; n; n = n->next) {
