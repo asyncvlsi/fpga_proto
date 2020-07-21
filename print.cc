@@ -563,6 +563,11 @@ void print_verilog (graph *g, FILE *output) {
       fprintf(output, "module \\md_mux_%u (\n", n->extra_node);
     }
     fprintf(output, "\t input\t\t\t\\clock\n");
+    for (auto gp : n->gp) {
+      fprintf(output,"\t,input\t\t\t\\");
+      gp->c->toid()->Print(output);
+      fprintf(output, " \n");
+    }
     int idr_num = 0;
     for (auto p : n->p) {
       if (p->dir == 0) {
@@ -838,6 +843,15 @@ void print_verilog (graph *g, FILE *output) {
                                   in->extra_inst, in->extra_inst);
       }
       int jdr_num = 0;
+      if (in->n) {
+        for (auto gp : in->n->gp) {
+          fprintf(output, "\t,.\\");
+          gp->c->toid()->Print(output);
+          fprintf(output, "\t(\\");
+          gp->c->toid()->Print(output);
+          fprintf(output, " )\n");
+        }
+      }
       for (auto i = 0; i < in->p.size(); i++) {
         if (in->p[i]->drive_type == 0) {
           fprintf(output, "\t,.\\");

@@ -702,6 +702,21 @@ void add_timing (graph *g, int func) {
           }
         }
       }
+      for (auto p : n->gp) {
+        if (p->dir == 0) { continue; }
+        for (auto cp : n->cp[p->c]) {
+          if (p == cp) {
+            continue;
+          }
+          if (cmp_owner(p,cp) == 1 && cp->dir == 0) {
+            p->delay = 1;
+          } else {
+            int cur = 0;
+            std::vector<port *> path;
+            break_cycle(n, cp, path, func, cur);
+          }
+        }
+      }
     }
     unmark_node_visited(n);
     map_io_delay(n);

@@ -148,6 +148,9 @@ void map_cp (graph *g) {
     for (auto np : n->p) {
       n->cp[np->c].push_back(np);
     }
+    for (auto gnp : n->gp) {
+      n->cp[gnp->c].push_back(gnp);
+    }
     for (auto in = n->cgh; in; in = in->next) {
       for (auto ip : in->p) {
         n->cp[ip->c].push_back(ip);
@@ -548,9 +551,7 @@ void add_proc_ports (Scope *cs, act_boolean_netlist_t *bnl, node *pn) {
   }
  
   //adding global ports to process node
-  fprintf(stdout, "%s\n", pn->proc->getName());
   for (int i = 0; i < A_LEN(bnl->used_globals); i++) {
-    fprintf(stdout, "HERE\n");
     port *fgp = new port;
     fgp->c = bnl->used_globals[i]->toid()->Canonical(cs);
     fgp->dir = 1;

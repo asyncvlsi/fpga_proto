@@ -164,6 +164,15 @@ node *copy_node (node *n){
     cn->p.push_back(cpp);
     cn->cp[cpp->c].push_back(cpp);
   }
+  for (auto gp : n->gp) {
+    port *cgpp;
+    cgpp = copy_port(gp);
+    cgpp->owner = 0;
+    cgpp->u.p.n = cn;
+    cn->gp.push_back(cgpp);
+    cn->cp[cgpp->c].push_back(cgpp);
+  }
+  
   cn->g_num = n->g_num;
   cn->gh = NULL;
   cn->gt = NULL;
