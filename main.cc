@@ -49,6 +49,7 @@ void usage () {
   fprintf(stdout, "INCLUDE_XDC - paths to additional xdc files\n");
   fprintf(stdout, "OPTIMIZATION - 0 - ff per gate; 1 - reduced number of ffs\n");
   fprintf(stdout, "VERILOG - 0 - no print; 1 - print verilog\n");
+  fprintf(stdout, "DUT - 0 no dut template; 1 - create dut template\n");
   fprintf(stdout, "=============================================================================================\n");
 }
 
@@ -131,8 +132,7 @@ int main (int argc, char **argv) {
 	ActNetlistPass *NETL = new ActNetlistPass (a);
 
 	Assert (BOOL->run (p), "Booleanize pass failed");
-
-  NETL->run(p);
+  Assert (NETL->run(p) , "Netlist pass failed");
 
   fpga::fpga_config *fc;
   FILE *conf_file;
@@ -148,7 +148,6 @@ int main (int argc, char **argv) {
   fprintf(stdout, "\tBUILDING VERILOG PROJECT...\n");
 	fg = fpga::create_fpga_project(a,p);
   fprintf(stdout, "------------------------------------------\n");
-  fpga::check_io(fc, fg->hd);
   fprintf(stdout, "------------------------------------------\n");
   fprintf(stdout, "\tDONE\n");
   fprintf(stdout, "==========================================\n");
