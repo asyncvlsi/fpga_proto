@@ -1,17 +1,11 @@
 #include <vector>
-#include "state_machine.h"
+#include <act/state_machine.h>
 
 namespace fpga {
 
 /*
  *  CHP Project Class
  */
-
-void CHPProject::PrintPlain() {
-  for (auto n = hd; n; n = n->GetNext()) {
-    n->PrintPlain();
-  }
-}
 
 void CHPProject::Append(StateMachine *sm) {
   if (hd) {
@@ -43,6 +37,38 @@ CHPProject::~CHPProject(){
 /*
  *  State-Machine Class
  */
+bool StateMachine::IsEmpty() {
+  if (top) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
+int StateMachine::IsPort(act_connection *c_) {
+  int port_type = 0;
+  for (auto p : ports) {
+    if (p->GetCon() == c_) {
+      if (p->GetDir() == 0) {
+        return 1;
+      } else {
+        return 2;
+      }
+    }
+  }
+  //for (auto p : instports) {}
+  return 0;
+}
+
+void StateMachine::AddSize() { size++; }
+void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
+void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
+void StateMachine::AddVar(Variable *v_){ vars.push_back(v_); }
+void StateMachine::AddData(int up, int dn, std::string &id, Data *dd) {
+  std::tuple<int, int, std::string> key;
+  key = make_tuple(up, dn, id);
+  data[key].push_back(dd);
+}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
     commun_num++;
@@ -59,102 +85,26 @@ void StateMachine::AddCondition(Condition *c) {
   }
 }
 
-void StateMachine::AddSize() {
-  size++;
-}
-
-void StateMachine::AddKid(StateMachine *sm) {
-  csm.push_back(sm);
-}
-
-void StateMachine::SetFirstState(State *s) {
-  top = s;
-  size = 1;
-}
-
-int StateMachine::GetNum(){
-  return number;
-}
-
-int StateMachine::GetSize() {
-  return size;
-}
-
-int StateMachine::GetKids() {
-  return csm.size();
-}
-
+int StateMachine::GetNum(){ return number; }
+int StateMachine::GetSize() { return size; }
+int StateMachine::GetKids() { return csm.size(); }
 int StateMachine::GetGN() { return guard_num; }
 int StateMachine::GetSN() { return st_num; }
 int StateMachine::GetCN() { return commun_num; }
 int StateMachine::GetCCN() { return comma_num; }
+std::vector<Variable *> StateMachine::GetVars(){ return vars; }
+std::vector<Port *> StateMachine::GetPorts(){ return ports; }
+StateMachine *StateMachine::GetPar() { return par; }
+StateMachine *StateMachine::GetNext() { return next; }
+Process *StateMachine::GetProc() { return p; }
 
-void StateMachine::SetNext(StateMachine *smn) {
-  next = smn;
-}
-
-void StateMachine::SetProcess(Process *p_) {
-  p = p_;
-}
-
-void StateMachine::SetNumber(int n) {
-  number = n;
-}
-
-void StateMachine::SetParent(StateMachine *psm) {
-  par = psm;
-}
-
-bool StateMachine::IsEmpty() {
-  if (top) {
-    return false;
-  } else {
-    return true;
-  }
-}
-
-void StateMachine::PrintState(std::vector<std::pair<State *, Condition *>> s) {
-  for (auto ss : s) {
-    if (ss.first->isPrinted()) { continue; }
-    ss.first->PrintPlain();
-  }
-  for (auto ss : s) {
-    if (ss.first->isPrinted()) { continue; }
-    PrintState(ss.first->GetNextState());
-  }
-}
-
-void StateMachine::PrintPlain() {
-  
-  top->PrintPlain();
-  PrintState(top->GetNextState());
-
-  for (auto c : csm) {
-    fprintf(stdout, "===============\n");
-    c->PrintPlain();
-  }
-
- // for (auto cc : guard_condition) {
- //   cc->PrintPlain();
- // }
- // for (auto cc : state_condition) {
- //   cc->PrintPlain();
- // }
- // for (auto cc : commu_condition) {
- //   cc->PrintPlain();
- // }
- // for (auto cc : comma_condition) {
- //   cc->PrintPlain();
- // }
-
-}
-
-StateMachine *StateMachine::GetPar() {
-  return par;
-}
-
-StateMachine *StateMachine::GetNext() {
-  return next;
+void StateMachine::SetNext(StateMachine *smn) { next = smn; }
+void StateMachine::SetProcess(Process *p_) { p = p_; }
+void StateMachine::SetNumber(int n) { number = n; }
+void StateMachine::SetParent(StateMachine *psm) { par = psm; }
+void StateMachine::SetFirstState(State *s) {
+  top = s;
+  size = 1;
 }
 
 StateMachine::StateMachine() {
@@ -201,46 +151,9 @@ StateMachine::~StateMachine() {
   delete p;
 }
 
-
-
-
 /*
  *  State Class
  */
-
-void State::PrintPlain() {
-  printed = 1;
-  if (type == ACT_CHP_SEMI) {
-    fprintf(stdout, "SEMI\n");
-  } else if (type == ACT_CHP_COMMA) {
-    fprintf(stdout, "COMMA\n");
-  } else if (type == ACT_CHP_SELECT) {
-    fprintf(stdout, "SELECT\n");
-  } else if (type == ACT_CHP_SELECT_NONDET) {
-    fprintf(stdout, "NONDET\n");
-  } else if (type == ACT_CHP_LOOP) {
-    fprintf(stdout, "LOOP\n");
-  } else if (type == ACT_CHP_SKIP) {
-    fprintf(stdout, "SKIP\n");
-  } else if (type == ACT_CHP_ASSIGN) {
-    fprintf(stdout, "ASSIGN\n");
-  } else if (type == ACT_CHP_SEND) {
-    fprintf(stdout, "SEND\n");
-  } else if (type == ACT_CHP_RECV) {
-    fprintf(stdout, "RECV\n");
-  } else {
-    fprintf(stdout, "Not supported type: %i\n", type);
-  }
-  for (auto c : ns) {
-    fprintf(stdout, "sm%i_state%i->", par->GetNum(), number);
-    fprintf(stdout, "sm%i_state%i \n", par->GetNum(), c.first->GetNum());
-    fprintf(stdout, " (");
-    c.second->PrintPlain();
-    fprintf(stdout, " )\n");
-  }
-}
-
-void State::PrintVerilog() {}
 
 bool State::isPrinted() {
   if (printed == 0) {
@@ -250,21 +163,12 @@ bool State::isPrinted() {
   }
 }
 
-void State::AddNextState(std::pair<State *, Condition *> s) {
-  ns.push_back(s);
-}
+void State::AddNextState(std::pair<State *, Condition *> s) { ns.push_back(s); }
 
-int State::GetType() {
-  return type;
-}
-
-int State::GetNum() {
-  return number;
-}
-
-std::vector<std::pair<State *, Condition *>> State::GetNextState() {
-  return ns;
-}
+int State::GetType() { return type; }
+int State::GetNum() { return number; }
+StateMachine *State::GetPar() { return par; }
+std::vector<std::pair<State *, Condition *>> State::GetNextState() { return ns; }
 
 State::State(){
   type = 0;
@@ -285,252 +189,44 @@ State::~State(){}
  *  Condition Class
  */
 
-void Condition::PrintExpr(Expr *e) {
-  switch (e->type) {
-    case (E_AND):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " & ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_OR):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " | ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_NOT):
-      fprintf(stdout, " ~");
-      PrintExpr(e->u.e.l);
-      break;
-    case (E_PLUS):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " + ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_MINUS):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " - ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_MULT):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " * ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_DIV):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " / ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_MOD):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " % ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_LSL):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " << ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_LSR):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " >> ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_ASR):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " >>> ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_UMINUS):
-      fprintf(stdout, " -");
-      PrintExpr(e->u.e.l);
-      break;
-    case (E_INT):
-      fprintf(stdout, "%i", e->u.v);
-      break;
-    case (E_VAR):
-      ActId *id;
-      id = (ActId *)e->u.e.l;
-      id->Print(stdout);
-      fprintf(stdout, " ");
-      break;
-    case (E_QUERY):
-      break;
-    case (E_LPAR):
-      break;
-    case (E_RPAR):
-      break;
-    case (E_XOR):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " ^ ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_LT):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " < ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_GT):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " > ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_LE):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " <=");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_GE):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " >= ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_EQ):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " == ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_NE):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " != ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_TRUE):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " 1'b1 ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_FALSE):
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " 1'b0 ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_COLON):
-      fprintf(stdout, " : ");
-      break;
-    case (E_PROBE):
-      fprintf(stdout, "PROBE");
-      break;
-    case (E_COMMA):
-      fprintf(stdout, "COMMA");
-      break;
-    case (E_CONCAT):
-      fprintf(stdout, "CONCAT");
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " ");
-      PrintExpr(e->u.e.r);
-      break;
-    case (E_BITFIELD):
-      fprintf(stdout, "BITFIELD");
-      fprintf(stdout, "[");
-      PrintExpr(e->u.e.l);
-      fprintf(stdout, " ");
-      PrintExpr(e->u.e.r);
-      fprintf(stdout, "]");
-      break;
-    case (E_COMPLEMENT):
-      fprintf(stdout, " ~");
-      PrintExpr(e->u.e.l);
-      break;
-    case (E_REAL):
-      fprintf(stdout, "%i", e->u.v);
-      break;
-    case (E_RAWFREE):
-      break;
-    case (E_END):
-      break;
-    case (E_NUMBER):
-      break;
-    case (E_FUNCTION):
-      break;
-    default:
-      fprintf(stdout, "What?! %i\n", e->type);
-      break;
-  }
-
-}
-
-int Condition::GetType(){
-  return type;
-}
-
-int Condition::GetNum() {
-  return num;
-}
-
-void Condition::PrintPlain() {
-  fprintf(stdout, "Condition number : %i\n", num);
-  switch (type) {
-    case (0) :
-      fprintf(stdout, "communication_completion = ");
-      u.v->Print(stdout);
-      fprintf(stdout, "_valid & ");
-      u.v->Print(stdout);
-      fprintf(stdout, "_ready");
-      break;
-    case (1) :
-      fprintf(stdout, "guard = ");
-      PrintExpr(u.e);
-      break;
-    case (2) :
-      fprintf(stdout, "state = state%i", u.st_num);
-      break;
-    case (3) :
-      fprintf(stdout, "cond = ");
-      for (auto cc : u.c->c) {
-        if (cc->GetType() == 0) {
-          fprintf(stdout, "commun_compl%i ", cc->GetNum());
-        } else if (cc->GetType() == 1) {
-          fprintf(stdout, "guard%i ", cc->GetNum());
-        } else if (cc->GetType() == 2) {
-          fprintf(stdout, "state%i ", cc->GetNum());
-        } else {
-          fprintf(stdout, "comma%i ", cc->GetNum());
-        }
-        if (cc != u.c->c[u.c->c.size()-1]) {
-          if (u.c->type != 1) {
-            fprintf(stdout," & ");
-          } else {
-            fprintf(stdout," | ");
-          }
-        }
-      }
-      break;
-  }
-  fprintf(stdout,"\n");
-}
-
-void Condition::PrintVerilog(){}
+int Condition::GetType(){ return type; }
+int Condition::GetNum() { return num; }
+State *Condition::GetState() { return u.s; }
+StateMachine *Condition::GetScope() { return scope; }
 
 Condition::Condition() {
   type = 0;
   num = 0;
   u.v = NULL;
+  scope = NULL;
 }
 
-Condition::Condition(ActId *v_, int num_) {
+Condition::Condition(ActId *v_, int num_, StateMachine *sc) {
   type = 0;
   num = num_;
   u.v = v_;
+  scope = sc;
 }
 
-Condition::Condition(Expr *e_, int num_) {
+Condition::Condition(Expr *e_, int num_, StateMachine *sc) {
   type = 1;
   num = num_;
   u.e = e_;
+  scope = sc;
 }
 
-Condition::Condition(int st_num_, int num_) {
+Condition::Condition(State *s_, int num_, StateMachine *sc) {
   type = 2;
   num = num_;
-  u.st_num = st_num_;
+  u.s = s_;
+  scope = sc;
 }
 
-Condition::Condition(Comma *c_, int num_) {
+Condition::Condition(Comma *c_, int num_, StateMachine *sc) {
   type = 3;
   num = num_;
   u.c = c_;
+  scope = sc;
 }
-
 
 }

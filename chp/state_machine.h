@@ -1,11 +1,19 @@
 #include <vector>
-#include "act/act.h"
+#include <string.h>
+#include <act/act.h>
 
 namespace fpga {
 
+class Data;
+class Port;
+class Variable;
+
 class Condition;
+class State;
 class StateMachine;
 
+//Comma is a general type for multi 
+//condition conditions representation
 struct Comma {
   int type; //0 - ANDed
             //1 - ORed
@@ -13,33 +21,46 @@ struct Comma {
   std::vector <Condition *> c;
 };
 
+//Condition class is for state machine
+//state switching conditions
 class Condition {
 public:
 
   Condition();
-  Condition(ActId *v_, int num_);
-  Condition(Expr *e_, int num_);
-  Condition(int st_num_, int num_);
-  Condition(Comma *c_, int num_);
+  Condition(ActId *v_, int num_, StateMachine *sc);
+  Condition(Expr *e_,  int num_, StateMachine *sc);
+  Condition(State *s_, int num_, StateMachine *sc);
+  Condition(Comma *c_, int num_, StateMachine *sc);
+  Condition(bool *con_,int num_, StateMachine *sc);
 
   int GetType();
   int GetNum();
+  StateMachine *GetScope();
 
-  void PrintPlain(); 
-  void PrintVerilog();
+  void PrintPlain();
+  //f=0 - Name Only
+  //f=1 - Name + Expression 
+  //f=2 - Expression
+  void PrintVerilog(int f);
+
+  //might be not the best idea, but I need it... :(
+  State *GetState();
 
 private:
   
   void PrintExpr(Expr *);
+  void PrintScope(StateMachine *sc);
 
   int type; //0 - communication completion
             //1 - selection/loop guard
             //2 - statement completion (1 cycle operation)
             //3 - comma
 
-  int num;
+  int num;  //condition number for each paticular type
 
   union {
+    //constant condition
+    bool *con;
 
     //variable completing communication
     ActId *v;
@@ -48,7 +69,7 @@ private:
     Expr *e;
 
     //int state number to complete
-    int st_num;
+    State* s;
 
     //comma type
     //generic type for next state conditions
@@ -57,7 +78,8 @@ private:
     Comma *c;
 
   } u;
- 
+
+  StateMachine *scope;  //parent state machine
 };
 
 //State is a sequence of statements
@@ -76,9 +98,11 @@ public:
   int GetType();
   int GetNum();
   std::vector<std::pair<State *, Condition *>> GetNextState();
+  StateMachine *GetPar();
 
-  void PrintPlain();
-  void PrintVerilog();
+  void PrintPlain(int p = 1);
+  void PrintVerilog(int p = 1);
+  void PrintVerilogName(int);
   bool isPrinted();
 
 private:
@@ -99,6 +123,8 @@ private:
   //just to avoid loop
   unsigned int printed:1;
 
+  void PrintParent(StateMachine *p);
+  void PrintType();
 };
 
 //State machine which controls
@@ -112,6 +138,7 @@ public:
   ~StateMachine();
 
   bool IsEmpty();
+  int IsPort(act_connection *);
 
   void SetFirstState(State *s);
   void SetProcess(Process *p_);
@@ -122,6 +149,9 @@ public:
   void AddCondition(Condition *c);
   void AddSize();
   void AddKid(StateMachine *sm);
+  void AddData(int, int, std::string&, Data *);
+  void AddPort(Port *);
+  void AddVar(Variable *);
 
   int GetSize();
   int GetNum();
@@ -132,9 +162,14 @@ public:
   int GetKids();
   StateMachine *GetPar();
   StateMachine *GetNext();
+  std::vector<Variable *> GetVars();
+  std::vector<Port *> GetPorts();
+  Process *GetProc();
 
-  void PrintVerilog();
+  void PrintParent(StateMachine *);
   void PrintPlain();
+  void PrintVerilog();
+  void PrintVerilogHeader();
 
 private:
 
@@ -151,14 +186,22 @@ private:
 
   State *top;
 
+  std::map<std::tuple<int, int,std::string>, std::vector<Data *>> data;
+
+  std::vector<Port *> ports;
+  std::vector<Variable *> vars;
+
   std::vector<Condition *> guard_condition;
   std::vector<Condition *> state_condition;
   std::vector<Condition *> commu_condition;
   std::vector<Condition *> comma_condition;
 
-  void PrintState(std::vector<std::pair<State *, Condition *>> s);
+  void PrintPlainState(std::vector<std::pair<State *, Condition *>> s);
+  void PrintVerilogState(std::vector<std::pair<State *, Condition *>> s);
+  void PrintVerilogWires();
+  void PrintVerilogVars();
+  void PrintVerilogParameters();
 
-  //list of child statemachines
   std::vector<StateMachine *> csm;
 
   StateMachine *next;
@@ -176,6 +219,7 @@ public:
   void Append(StateMachine *sm);
 
   void PrintPlain();
+  void PrintVerilog();
 
 private:
 
@@ -185,4 +229,120 @@ private:
 
 CHPProject *build_machine (Act *, Process *);
 
-} 
+/*
+ *  Data path class
+ */
+
+class Data {
+public:
+
+  Data();
+  Data(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, Expr *);
+  Data(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, ActId *);
+  ~Data();
+
+  int GetType();
+  Condition *GetCond();
+  Process *GetActScope();
+  StateMachine *GetScope();
+  ActId *GetId();
+
+  void PrintPlain();
+  void PrintVerilogVar();
+  void PrintVerilogCondition();
+  void PrintVerilogConditionUP();
+  void PrintVerilogAssignment();
+  void PrintVerilogHS(int);
+
+private:
+
+  //at which state data processing happens
+  Condition *cond;
+
+  int type; //0 - expression
+            //1 - recv
+            //2 - send
+            //3 - function
+
+  int up; //array slice upper boundary
+  int dn; //array slice lower boundary
+
+  ActId *id;  //name of the variable assigning to
+
+  union {
+    //assigning an expression
+    struct {
+      Expr *e; 
+    } assign;
+ 
+    //assigning channel value
+    struct {
+      Condition *up_cond;
+      ActId *chan;
+    } recv;
+
+    //assigning expression to the channel
+    struct {
+      Condition *up_cond;
+      Expr *se;
+    } send;
+
+    //assigning function value
+    struct {
+      mstring_t *name;
+    } func;
+  } u;
+
+  StateMachine *scope;
+  Process *act_scope;
+
+  unsigned int printed:1;
+
+};
+
+class Port {
+public:
+
+  Port();
+  Port(int, int, int, act_connection *);
+  ~Port();
+
+  int GetDir();
+  act_connection *GetCon();
+
+  void Print();
+
+private:
+
+  int dir;  //0 - output; 1 - input
+  int width;
+  int ischan; //0 - no, 1 - yes;
+
+  act_connection *connection;
+
+};
+
+void PrintExpression(Expr *);
+
+class Variable {
+public:
+
+  Variable();
+  Variable(int, int, act_connection *);
+  
+  act_connection *GetCon();
+
+  void PrintVerilog();
+
+private:
+
+  int type;   //0 - reg, 1 - wire
+  int width;  //variable bit-width
+
+  act_connection *id;  //name
+
+};
+
+}
+
+

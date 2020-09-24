@@ -27,8 +27,11 @@ fprintf(stdout, "    +  +  +  +  +  +  +  +        +  +  +  +  +  +  +  +       
 void usage () {
   fprintf(stdout, "=============================================================================================\n");
   logo();
-  fprintf(stdout, "=============================================================================================\n\n");
   fprintf(stdout, "=============================================================================================\n");
+  fprintf(stdout, "Usage: chp2fpga [-p <process_name>] <*.act>\n");
+  fprintf(stdout, "=============================================================================================\n");
+  fprintf(stdout, "h - Usage guide\n");
+  fprintf(stdout, "o - Output file\n");
   fprintf(stdout, "=============================================================================================\n");
 }
 
@@ -47,14 +50,14 @@ int main (int argc, char **argv) {
   extern int opterr;
   opterr = 0;
 
-  while ((key = getopt (argc, argv, "p:h:o:")) != -1) {
+  while ((key = getopt (argc, argv, "p:ho:")) != -1) {
     switch (key) {
       case 'o':
         fout  = fopen(optarg, "w");
         break;
       case 'h':
         usage();
-        return 0;
+        exit(1);
         break;
       case 'p':
         if (proc) {
@@ -107,8 +110,7 @@ int main (int argc, char **argv) {
   
   cp = fpga::build_machine(a,p);
 
-  fprintf(stdout, "++++++++++++++++++++++++++++++++++++++\n");
-  cp->PrintPlain();
+  cp->PrintVerilog();
 
   return 0;
 }
