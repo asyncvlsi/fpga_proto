@@ -81,8 +81,6 @@ Condition *traverse_chp(Process *proc,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,   //current scope machine
                         StateMachine *tsm,  //top scope machine
-                        State *cs,          //current state
-                        State *ns,          //next state
                         Condition *pc       //parent init cond
                         ) {
 
@@ -113,12 +111,17 @@ Condition *traverse_chp(Process *proc,
 
     l = chp_lang->u.semi_comma.cmd;
 
+    //Comma is a simple statement, so create new state
+    //only if it is the top statement 
     State *s = NULL;
     if (sm->IsEmpty()) {
       s = new State(ACT_CHP_COMMA, sm->GetSize(), sm);
       sm->SetFirstState(s);
     }
 
+    //if comma is top level statement then child condition
+    //is for the current state otherwise use parent condition
+    //to transfer to lower levels
     Condition *child_cond;
     if (s) {
       child_cond = new Condition(s, sm->GetSN(), sm);
@@ -126,44 +129,51 @@ Condition *traverse_chp(Process *proc,
       child_cond = pc;
     }
 
+    //traverse all COMMAed statements
     for (li = list_first(l); li; li = list_next(li)) {
 
       cl = (act_chp_lang_t *)list_value(li);
 
+      //if skip statement simply ignore
       if (cl->type == ACT_CHP_SKIP) { continue; }
 
+      //if statement is simple then no new sm
+      //is needed otherwise create new child sm
       if (is_simple(cl->type)) {
-        if (s) {
-          tmp = traverse_chp(proc, cl, sm, tsm, s, s, child_cond);
-        } else {
-          tmp = traverse_chp(proc, cl, sm, tsm, NULL, s, child_cond);
-        }
+        tmp = traverse_chp(proc, cl, sm, tsm, child_cond);
       } else {
         StateMachine *csm = new StateMachine();
         csm->SetNumber(sm->GetKids());
         csm->SetParent(sm);
         sm->AddKid(csm);
-        tmp = traverse_chp(proc, cl, csm, tsm , NULL, NULL, child_cond);
+        tmp = traverse_chp(proc, cl, csm, tsm , child_cond);
       }
 
+      //if valid condition is returned then add it
+      //to the termination vector
       if (tmp) {
-        sm->AddCondition(tmp);
         vc.push_back(tmp);
+        sm->AddCondition(tmp);
       }
 
     }
+
+    //if comma is top level then need to add
+    //child condition to the termination list
     if (s) {
       sm->AddCondition(child_cond);
       vc.push_back(child_cond);
     }
 
+    //creating general termination conditon
     Comma *com = new Comma;
     com->type = 0;
     com->c = vc;
     Condition *term = new Condition(com, sm->GetCCN(), sm);
 
-
-    if (!sm->GetPar()) {
+    //if there is no parent sm the create dummy
+    //SKIP state and after termination switch to it
+    if (s) {
       State *ss = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
       n.first = ss;
       n.second = term;
@@ -180,90 +190,117 @@ Condition *traverse_chp(Process *proc,
     fprintf(stdout, "//SEMI\n");
 
     //Semi type completion means completion of the statement
-    //between two semicolons. If statement is simple then 
-    //exaluation takes one cycle and switches to the next
-    //state. If it is complex then new state machine is created
-    //and building process initiated.
+    //between two semicolons.
 
     l = chp_lang->u.semi_comma.cmd;
 
     State *s = NULL;
     State *first_s = NULL;
     State *prev_s = NULL;
-    Condition *prev_c = NULL;
-    Condition *child_cond = NULL;
-    Condition *next_con = NULL;
 
+    Condition *prev_cond = NULL;
+    Condition *child_cond = NULL;
+    Condition *next_cond = NULL;
+
+    Comma *next_com = NULL;
+    //traverse all statements separated with semicolon
     for (li = list_first(l); li; li = list_next(li)) {
 
       cl = (act_chp_lang_t *)list_value(li);
 
+      //if statement is SKIP then simply ignore it 
       if (cl->type != ACT_CHP_SKIP) {
 
+        Comma *next_com = new Comma;
+        next_com->type = 0;
+
+        //semicolon is a complex statement and every
+        //child statement is a new state
         s = new State(cl->type, sm->GetSize(), sm);
-        
+
+        //child condition is the current state
         child_cond = new Condition(s, sm->GetSN(), sm);
         sm->AddCondition(child_cond);
 
+        //if semicolon is the top level statement then
+        //add first statement to the current sm
         if (sm->IsEmpty()) {
           sm->SetFirstState(s);
         } else {
           sm->AddSize();
         }
-        
+
+        //save first statement for futher plans 
         if (li == list_first(l)) {
           first_s = s;
         }
 
+        //if child statement is simple then no new sm
+        //is needed otherwise create new child sm    
         if (is_simple(cl->type)) {
-          tmp = traverse_chp(proc, cl, sm, tsm, s, s, child_cond);
-          sm->AddCondition(tmp);
+          tmp = traverse_chp(proc, cl, sm, tsm, child_cond);
+  
+          //if simple statement returns condition then we
+          //need to store it in the current sm
+          if (tmp) {
+            next_com->c.push_back(tmp);
+            sm->AddCondition(tmp);
+          }
         } else {
           StateMachine *csm = new StateMachine();
           csm->SetNumber(sm->GetKids());
           csm->SetParent(sm);
           sm->AddKid(csm);
-          tmp = traverse_chp(proc, cl, csm, tsm, NULL, NULL, child_cond);
+          tmp = traverse_chp(proc, cl, csm, tsm, child_cond);
+          next_com->c.push_back(tmp);
         }
 
         std::pair<State *, Condition *> n;
-      
+
+        //checking if not first child statement is processed
+        //and add it as the next state to the previous state
         if (prev_s) {
           n.first = s;
-          n.second = prev_c;
+          n.second = prev_cond;
           prev_s->AddNextState(n);
         }
-   
-        Comma *next_com = new Comma;
-        next_com->type = 0;
-        next_com->c.push_back(tmp);
+  
+        //add child condition to the general switch
+        //condition
         next_com->c.push_back(child_cond);
+
+        //if parent condition is presented then add it as well
         if (pc) {
           next_com->c.push_back(pc);
         }
         
-        next_con = new Condition(next_com, sm->GetCCN(), sm);
+        next_cond = new Condition(next_com, sm->GetCCN(), sm);
 
+        //store current state as a previous one for the next
         prev_s = s;
-        prev_c = next_con;
+        prev_cond = next_cond;
 
-        sm->AddCondition(next_con);
+        sm->AddCondition(next_cond);
       }
 
     }
 
+    //use last returned condition a switching condition
+    //in the general condition
     Comma *com = new Comma;
     com->type = 0;
     com->c.push_back(tmp);
     com->c.push_back(child_cond);
     Condition *term = new Condition(com, sm->GetCCN(), sm);
 
-
+    //if parent sm presented then switch semi sm to the
+    //first state otherwise create dummy SKIP state and
+    //switch to it
     if (sm->GetPar()) {
       n.first = first_s;
-      n.second = next_con;
+      n.second = next_cond;
       s->AddNextState(n);
-      return next_con;
+      return next_cond;
     } else if (!sm->GetPar()) {
       State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
       n.first = ds;
@@ -289,11 +326,14 @@ Condition *traverse_chp(Process *proc,
       sm->SetFirstState(s);
     }
 
-    //walk through all selection options
     std::pair<State *, Condition *> n;
     State *ss = NULL;
 
+    //walk through all selection options
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
+
+      //if guard exists and statement is not skip create
+      //new guard condition
       if (gg->g) {
         if (gg->s && gg->s->type != ACT_CHP_SKIP) {
           Condition *g = new Condition(gg->g, sm->GetGN(), sm);
@@ -301,20 +341,26 @@ Condition *traverse_chp(Process *proc,
           n.second = g;
         }
       }
+
+      //is statement exists and it is not skip then create
+      //new state
       if (gg->s) {
         if (gg->s->type != ACT_CHP_SKIP) {
           ss = new State(gg->s->type, sm->GetSize(), sm);
           n.first = ss;
           sm->AddSize();
           s->AddNextState(n);
+
+          //if statement is simple then no new sm is needed
+          //otherwise create new child sm
           if (is_simple(gg->s->type)) {
-            tmp = traverse_chp(proc, gg->s, sm, tsm, ss, s, NULL);
+            tmp = traverse_chp(proc, gg->s, sm, tsm, NULL);
           } else {
             StateMachine *csm = new StateMachine();
             csm->SetNumber(sm->GetKids());
             csm->SetParent(sm);
             sm->AddKid(csm);
-            tmp = traverse_chp(proc, gg->s, csm, tsm, NULL, NULL, NULL);
+            tmp = traverse_chp(proc, gg->s, csm, tsm, NULL);
           }
           if (tmp) {
             vc.push_back(tmp);
@@ -323,13 +369,17 @@ Condition *traverse_chp(Process *proc,
       }
     }
 
+    //create new general condition of OR type for select
+    //statement termination
     Comma *com = new Comma;
     com->type = 1;
     com->c = vc;
-
     Condition *term = new Condition(com, sm->GetCCN(), sm);
 
-    if (!ns && !sm->GetPar()) {
+    //if select is the top level statement then create
+    //a dummy skip state to switch to after selection
+    //completion
+    if (!sm->GetPar()) {
       ss = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
       n.first = ss;
       n.second = term;
@@ -349,7 +399,7 @@ Condition *traverse_chp(Process *proc,
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
       Condition *g = new Condition(gg->g, sm->GetGN(), sm);
       sm->AddCondition(g);
-      traverse_chp (proc, chp_lang->u.gc->s, sm, tsm, NULL, NULL, NULL);
+      traverse_chp (proc, chp_lang->u.gc->s, sm, tsm, NULL);
     }
     break;
   }
@@ -362,113 +412,146 @@ Condition *traverse_chp(Process *proc,
 
     int inf_flag = 0;
 
+    //Loop is complex, so always create new first state
     State *s = NULL;
     s = new State(ACT_CHP_LOOP, 0, sm);
     sm->SetFirstState(s);
 
+    //declare child condition for child statements
     Condition *child_cond = NULL;
 
+    //guards are executed at the zero state of the
+    //loop, so this one below is it
     Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
     sm->AddCondition(zero_state_cond);
 
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
+      //next state is stored in pairs of the state and
+      //corresponding condition
       std::pair<State *, Condition *> n;
 
       Condition *g = NULL;
       State *ss = NULL;
+
+      //if loop is infinite there is no guard
+      //that is why checking it first 
       if (gg->g) {
+
+        //if statement is skip then simply ignore
         if (gg->s->type != ACT_CHP_SKIP) {
+
+          //create gaurd condition
           g = new Condition(gg->g, sm->GetGN(), sm);
           sm->AddCondition(g);
         }
-        vt.push_back(g);
       } else {
-        inf_flag = 1; 
-        vt.push_back(zero_state_cond);
+
+        //if loop is infinite then set flag to high
+        inf_flag = 1;
+        g = zero_state_cond;
       }
+      //add guard to the terminate vector
+      vt.push_back(g);
 
-      if (gg->s) {
-        if (gg->s->type != ACT_CHP_SKIP) {
-          ss = new State(gg->s->type, sm->GetSize(), sm);
-          sm->AddSize();
-          n.first = ss;
-          if (!pc) {
-            if (g) {
-              n.second = g;
-            } else {
-              n.second = zero_state_cond;
-            }
-          } else {
-            Comma *par_com = new Comma();
-            par_com->type = 0;
-            if (g) {
-              par_com->c.push_back(g);
-            }
-            par_com->c.push_back(pc);
-            par_com->c.push_back(zero_state_cond);
-            Condition *par_cond = new Condition(par_com, sm->GetCCN(), sm);
-            n.second = par_cond;
-            vc.push_back(par_cond);
-            sm->AddCondition(par_cond);
-          }
-          s->AddNextState(n);
+      //if statement type is skip then ignore
+      if (gg->s->type != ACT_CHP_SKIP) {
 
-          child_cond = new Condition(ss, sm->GetSN(), sm);
+        //define next state of the corresponding type
+        ss = new State(gg->s->type, sm->GetSize(), sm);
+        sm->AddSize();
+        n.first = ss;
 
-          if (is_simple(gg->s->type)) {
-            tmp = traverse_chp(proc, gg->s, sm, tsm, ss, s, child_cond);
-          } else {
-            StateMachine *csm = new StateMachine();
-            csm->SetNumber(sm->GetKids());
-            csm->SetParent(sm);
-            sm->AddKid(csm);
-            tmp = traverse_chp(proc, gg->s, csm, tsm, NULL, NULL, child_cond);
+        //if there is no parent machine then simply
+        //use guard as the next state condition
+        //if parent machine exists then need to add
+        //parent condition to guarantee correct sequence
+        //of the events
+        if (!pc) {
+          n.second = g;
+        } else {
+          Comma *par_com = new Comma();
+          par_com->type = 0;
+          if (g != zero_state_cond) {
+            par_com->c.push_back(g);
           }
-          if (tmp) {
-            Comma *loop_com = new Comma;
-            loop_com->type = 0;
-            loop_com->c.push_back(tmp);
-            Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
-            n.first = s;
-            n.second = loop_c;
-            sm->AddCondition(loop_c);
-          } else {
-            n.first = s;
-            n.second = child_cond;
-          }
-          ss->AddNextState(n);
-          sm->AddCondition(child_cond);
+          par_com->c.push_back(pc);
+          par_com->c.push_back(zero_state_cond);
+          Condition *par_cond = new Condition(par_com, sm->GetCCN(), sm);
+          n.second = par_cond;
+          vc.push_back(par_cond);
+          sm->AddCondition(par_cond);
         }
+        s->AddNextState(n);
+
+        //define child condition as a current state
+        child_cond = new Condition(ss, sm->GetSN(), sm);
+
+        //if statement is simple then no new sm
+        //is needed otherwise create new child sm
+        if (is_simple(gg->s->type)) {
+          tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+        } else {
+          StateMachine *csm = new StateMachine();
+          csm->SetNumber(sm->GetKids());
+          csm->SetParent(sm);
+          sm->AddKid(csm);
+          tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
+        }
+
+        //if function returns valid condition value
+        //then add it to the common condition for
+        //cycle reiteration otherwise use child condition
+        if (tmp) {
+          Comma *loop_com = new Comma;
+          loop_com->type = 0;
+          loop_com->c.push_back(tmp);
+          Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
+          n.first = s;
+          n.second = loop_c;
+          sm->AddCondition(loop_c);
+        } else {
+          n.first = s;
+          n.second = child_cond;
+        }
+        ss->AddNextState(n);
+        sm->AddCondition(child_cond);
       }
     }
 
+    //create condition for all guards
     Comma *no_g_com = new Comma;
     no_g_com->type = 2;
     no_g_com->c = vt;
     Condition *no_guard = new Condition(no_g_com, sm->GetCCN(), sm);
     sm->AddCondition(no_guard);
 
+    //create general loop termination condition
     Comma *term_com = new Comma();
     term_com->c.push_back(zero_state_cond);
     term_com->c.push_back(no_guard);
     term_com->type = 0;
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
 
-    if (!ns && !pc && inf_flag == 0) {
+    //if there is no parent sm and loop is not
+    //infinite then create dummy SKIP state and
+    //after temination switch to it
+    //if there is parent or loop infinite then
+    //use zero state as the next and term condition
+    //for switching
+    if (!pc && inf_flag == 0) {
       State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
       n.first = ds;
       n.second = term_cond;
       s->AddNextState(n);
-    } else if (pc) {
+      sm->AddCondition(term_cond);
+    } else if (pc || inf_flag == 1) {
       n.first = s;
       n.second = term_cond;
       s->AddNextState(n);
-    }
-
-    if (inf_flag == 0) {
       sm->AddCondition(term_cond);
     }
+
     return term_cond;
 
     break;
@@ -496,8 +579,6 @@ Condition *traverse_chp(Process *proc,
 
     if (s) {
       tmp = new Condition(s, sm->GetSN(), sm);
-    } else {
-      tmp = new Condition(cs, sm->GetSN(), sm);
     }
 
     Data *d = NULL;
@@ -900,7 +981,7 @@ void traverse_act (Process *p, CHPProject *cp) {
   add_ports(cs, bnl, sm);
 
   //run chp traverse to build state machine
-  traverse_chp(p, chp_lang, sm, sm, NULL, NULL, NULL);
+  traverse_chp(p, chp_lang, sm, sm, NULL);
 
   //append linked list of chp project
   //processes
