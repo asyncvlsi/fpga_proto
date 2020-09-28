@@ -234,8 +234,7 @@ void StateMachine::PrintVerilog() {
   for (auto id : data) {
     fprintf(stdout, "always @(posedge clock)\n");
     fprintf(stdout, "if (reset) begin\n\t");
-    fprintf(stdout, "%s", std::get<2>(id.first).c_str());
-    fprintf(stdout, "[%i:%i]", std::get<0>(id.first), std::get<1>(id.first));
+    fprintf(stdout, "%s", id.first.c_str());
     fprintf(stdout, " <= 0;\n");
     fprintf(stdout, "end\n");
     for (auto dd : id.second) {
@@ -254,8 +253,8 @@ void StateMachine::PrintVerilog() {
         if (dd->GetType() == 1 || dd->GetType() == 2) {
           if (first == 0) {
             dd->PrintVerilogHS(first);
+            first = 1;
           }
-          first = 1;
           dd->PrintVerilogCondition();
           dd->PrintVerilogHS(first);
           first = 2;
@@ -444,10 +443,17 @@ void PrintExpression(Expr *e) {
       id->Print(stdout);
       break;
     case (E_QUERY):
+			PrintExpression(e->u.e.l);
+			fprintf(stdout, " ? ");
+			PrintExpression(e->u.e.r->u.e.l);
+			fprintf(stdout, " : ");
+			PrintExpression(e->u.e.r->u.e.r);
       break;
     case (E_LPAR):
+			fprintf(stdout, "LPAR\n");
       break;
     case (E_RPAR):
+			fprintf(stdout, "RPAR\n");
       break;
     case (E_XOR):
       PrintExpression(e->u.e.l);
@@ -506,11 +512,18 @@ void PrintExpression(Expr *e) {
       PrintExpression(e->u.e.r);
       break;
     case (E_BITFIELD):
-      fprintf(stdout, "BITFIELD");
+			unsigned int l;
+			unsigned int r;
+			l = (unsigned long) e->u.e.r->u.e.r;
+			r = (unsigned long) e->u.e.r->u.e.l;
+			((ActId *)e->u.e.l)->Print(stdout);
       fprintf(stdout, "[");
-      PrintExpression(e->u.e.l);
-      fprintf(stdout, " ");
-      PrintExpression(e->u.e.r);
+			if (l!=r) {
+				fprintf(stdout, "%i:", l);
+				fprintf(stdout, "%i", r);
+			} else {
+				fprintf(stdout, "%i", r);
+			}
       fprintf(stdout, "]");
       break;
     case (E_COMPLEMENT):
@@ -521,12 +534,16 @@ void PrintExpression(Expr *e) {
       fprintf(stdout, "%i", e->u.v);
       break;
     case (E_RAWFREE):
+			fprintf(stdout, "RAWFREE\n");
       break;
     case (E_END):
+			fprintf(stdout, "END\n");
       break;
     case (E_NUMBER):
+			fprintf(stdout, "NUMBER\n");
       break;
     case (E_FUNCTION):
+			fprintf(stdout, "FUNCTION\n");
       break;
     default:
       fprintf(stdout, "Whaaat?! %i\n", e->type);
@@ -763,11 +780,9 @@ void Data::PrintVerilogAssignment() {
     id->Print(stdout);
     fprintf(stdout, " <= ");
     u.recv.chan->Print(stdout);
-    fprintf(stdout, "[%i:%i]", up,dn);
     fprintf(stdout, " ;\n");
   } else if (type == 2) {
     id->Print(stdout);
-    fprintf(stdout, "[%i:%i]", up,dn);
     fprintf(stdout, " <= ");
     PrintExpression(u.send.se);
     fprintf(stdout, " ;\n");
@@ -800,7 +815,9 @@ void Variable::PrintVerilog (){
   } else {
     fprintf(stdout, "wire\t");
   }
-  fprintf(stdout, "[%i:0]\t", width);
+  if (width > 0) {
+    fprintf(stdout, "[%i:0]\t", width);
+  }
   id->toid()->Print(stdout);
   fprintf(stdout, " ;\n");
 }

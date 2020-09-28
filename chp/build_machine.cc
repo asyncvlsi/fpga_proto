@@ -41,7 +41,12 @@ bool is_simple(int type) {
 }
 
 //Function to check whether variable is added to the list
-//or not. True - declared, False - not declared
+//or not.
+//0 - not declared
+//1 - declared as variable
+//2 - declared as port
+//3 - declated as instance port
+//4 - ???(what does this mean?)
 int is_declared (StateMachine *sm, act_connection *v) {
   std::vector<Variable *> vv;
   vv = sm->GetVars();
@@ -64,7 +69,8 @@ void collect_vars(Expr *e, std::vector<ActId *> &vars) {
     ActId *id = (ActId *)e->u.e.l;
     vars.push_back(id);
   } else if (e->type == E_INT ||
-             e->type == E_REAL) {
+             e->type == E_REAL||
+						 e->type == E_BITFIELD) {
     return;
   } else {
     if (e->u.e.l) {collect_vars(e->u.e.l, vars); }
@@ -219,7 +225,17 @@ Condition *traverse_chp(Process *proc,
         s = new State(cl->type, sm->GetSize(), sm);
 
         //child condition is the current state
-        child_cond = new Condition(s, sm->GetSN(), sm);
+				if (pc) {
+					Comma *child_com = new Comma;
+					child_com->type = 0;
+					child_com->c.push_back(pc);
+					Condition *tmp_cond = new Condition(s, sm->GetSN(), sm);
+					sm->AddCondition(tmp_cond);
+					child_com->c.push_back(tmp_cond);
+					child_cond = new Condition(child_com, sm->GetCCN(), sm);
+				} else {
+	        child_cond = new Condition(s, sm->GetSN(), sm);
+				}
         sm->AddCondition(child_cond);
 
         //if semicolon is the top level statement then
@@ -269,11 +285,6 @@ Condition *traverse_chp(Process *proc,
         //condition
         next_com->c.push_back(child_cond);
 
-        //if parent condition is presented then add it as well
-        if (pc) {
-          next_com->c.push_back(pc);
-        }
-        
         next_cond = new Condition(next_com, sm->GetCCN(), sm);
 
         //store current state as a previous one for the next
@@ -285,29 +296,27 @@ Condition *traverse_chp(Process *proc,
 
     }
 
-    //use last returned condition a switching condition
-    //in the general condition
-    Comma *com = new Comma;
-    com->type = 0;
-    com->c.push_back(tmp);
-    com->c.push_back(child_cond);
-    Condition *term = new Condition(com, sm->GetCCN(), sm);
-
-    //if parent sm presented then switch semi sm to the
-    //first state otherwise create dummy SKIP state and
-    //switch to it
-    if (sm->GetPar()) {
+    //when the last statement completes switch to the dummy
+		//state and wait until parent sm switches to the next
+		//state so that children sm's can switch back to zero
+		//states
+    State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+    n.first = ds;
+    n.second = next_cond;
+		sm->AddSize();
+    prev_s->AddNextState(n);
+    if (pc) {
+			Comma *dum_com = new Comma;
+			dum_com->type = 2;
+			dum_com->c.push_back(pc);
+			Condition *dum_cond = new Condition(dum_com, sm->GetCCN(), sm);
+			sm->AddCondition(dum_cond);
       n.first = first_s;
-      n.second = next_cond;
-      s->AddNextState(n);
+      n.second = dum_cond;
+      ds->AddNextState(n);
       return next_cond;
-    } else if (!sm->GetPar()) {
-      State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
-      n.first = ds;
-      n.second = tmp;
-      s->AddNextState(n);
-      return tmp;
-    } 
+    }
+    return tmp;
 
     break;
   }
@@ -321,13 +330,17 @@ Condition *traverse_chp(Process *proc,
 
     //create new state for guard evaluation if needed
     State *s = NULL;
-    if (sm->IsEmpty()) {
-      s = new State(ACT_CHP_SELECT, 0, sm);
-      sm->SetFirstState(s);
-    }
+    s = new State(ACT_CHP_SELECT, 0, sm);
+    sm->SetFirstState(s);
 
+    Condition *child_cond = NULL;
+		Condition *guard = NULL;
+		Condition *zero_cond = NULL;
     std::pair<State *, Condition *> n;
     State *ss = NULL;
+
+		zero_cond = new Condition(s, sm->GetSN(), sm);
+		sm->AddCondition(zero_cond);
 
     //walk through all selection options
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
@@ -336,31 +349,54 @@ Condition *traverse_chp(Process *proc,
       //new guard condition
       if (gg->g) {
         if (gg->s && gg->s->type != ACT_CHP_SKIP) {
-          Condition *g = new Condition(gg->g, sm->GetGN(), sm);
-          sm->AddCondition(g);
-          n.second = g;
+          guard = new Condition(gg->g, sm->GetGN(), sm);
+          sm->AddCondition(guard);
         }
-      }
+      } else {
+				continue;
+			}
 
       //is statement exists and it is not skip then create
       //new state
       if (gg->s) {
         if (gg->s->type != ACT_CHP_SKIP) {
           ss = new State(gg->s->type, sm->GetSize(), sm);
-          n.first = ss;
           sm->AddSize();
+
+					Comma *guard_com = new Comma;
+					guard_com->type = 0;
+					guard_com->c.push_back(zero_cond);
+					if (pc) { guard_com->c.push_back(pc); }
+					guard_com->c.push_back(guard);
+					Condition *full_guard = new Condition(guard_com, sm->GetCCN(), sm);
+          n.first = ss;
+          n.second = full_guard;
           s->AddNextState(n);
+					sm->AddCondition(full_guard);	
+
+					if (pc) {
+						Comma *child_com = new Comma;
+						child_com->type = 0;
+						child_com->c.push_back(pc);
+						Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+						sm->AddCondition(tmp_cond);
+						child_com->c.push_back(tmp_cond);
+						child_cond = new Condition(child_com, sm->GetCCN(), sm);
+					} else {
+	      	  child_cond = new Condition(s, sm->GetSN(), sm);
+					}
+          sm->AddCondition(child_cond);
 
           //if statement is simple then no new sm is needed
           //otherwise create new child sm
           if (is_simple(gg->s->type)) {
-            tmp = traverse_chp(proc, gg->s, sm, tsm, NULL);
+            tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
           } else {
             StateMachine *csm = new StateMachine();
             csm->SetNumber(sm->GetKids());
             csm->SetParent(sm);
             sm->AddKid(csm);
-            tmp = traverse_chp(proc, gg->s, csm, tsm, NULL);
+            tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
           }
           if (tmp) {
             vc.push_back(tmp);
@@ -375,18 +411,28 @@ Condition *traverse_chp(Process *proc,
     com->type = 1;
     com->c = vc;
     Condition *term = new Condition(com, sm->GetCCN(), sm);
-
-    //if select is the top level statement then create
-    //a dummy skip state to switch to after selection
-    //completion
-    if (!sm->GetPar()) {
-      ss = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
-      n.first = ss;
-      n.second = term;
-      s->AddNextState(n);
-    }
-
     sm->AddCondition(term);
+
+    //when the last statement completes switch to the dummy
+		//state and wait until parent sm switches to the next
+		//state so that children sm's can switch back to zero
+		//states
+    State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+    n.first = ds;
+    n.second = term;
+		sm->AddSize();
+    ss->AddNextState(n);
+    if (pc) {
+			Comma *dum_com = new Comma;
+			dum_com->type = 2;
+			dum_com->c.push_back(pc);
+			Condition *dum_cond = new Condition(dum_com, sm->GetCCN(), sm);
+			sm->AddCondition(dum_cond);
+			n.first = s;
+			n.second = dum_cond;
+			ds->AddNextState(n);
+		}
+
 
     return term;
 
@@ -484,8 +530,19 @@ Condition *traverse_chp(Process *proc,
         }
         s->AddNextState(n);
 
-        //define child condition as a current state
-        child_cond = new Condition(ss, sm->GetSN(), sm);
+        //define child condition
+				if (pc) {
+					Comma *child_com = new Comma;
+					child_com->type = 0;
+					child_com->c.push_back(pc);
+					Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+					sm->AddCondition(tmp_cond);
+					child_com->c.push_back(tmp_cond);
+					child_cond = new Condition(child_com, sm->GetCCN(), sm);
+				} else {
+	        child_cond = new Condition(ss, sm->GetSN(), sm);
+				}
+//        sm->AddCondition(child_cond);
 
         //if statement is simple then no new sm
         //is needed otherwise create new child sm
@@ -530,26 +587,34 @@ Condition *traverse_chp(Process *proc,
     Comma *term_com = new Comma();
     term_com->c.push_back(zero_state_cond);
     term_com->c.push_back(no_guard);
+		if (pc) {term_com->c.push_back(pc); }
     term_com->type = 0;
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
 
-    //if there is no parent sm and loop is not
-    //infinite then create dummy SKIP state and
-    //after temination switch to it
-    //if there is parent or loop infinite then
-    //use zero state as the next and term condition
-    //for switching
-    if (!pc && inf_flag == 0) {
-      State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
-      n.first = ds;
-      n.second = term_cond;
-      s->AddNextState(n);
-      sm->AddCondition(term_cond);
-    } else if (pc || inf_flag == 1) {
+    //when the last statement completes switch to the dummy
+		//state and wait until parent sm switches to the next
+		//state so that children sm's can switch back to zero
+		//states
+    State *ds = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+    n.first = ds;
+    n.second = term_cond;
+    s->AddNextState(n);
+		sm->AddSize();
+    sm->AddCondition(term_cond);
+    if (pc && inf_flag == 1) {
+			Condition *dum_cond;
+			if (pc) {
+				Comma *dum_com = new Comma;
+				dum_com->type = 2;
+				dum_com->c.push_back(pc);
+				dum_cond = new Condition(dum_com, sm->GetCCN(), sm);
+			} else {
+				dum_cond = new Condition(ds, sm->GetSN(), sm);
+			}
       n.first = s;
-      n.second = term_cond;
-      s->AddNextState(n);
-      sm->AddCondition(term_cond);
+      n.second = dum_cond;
+      ds->AddNextState(n);
+      sm->AddCondition(dum_cond);
     }
 
     return term_cond;
@@ -581,6 +646,7 @@ Condition *traverse_chp(Process *proc,
       tmp = new Condition(s, sm->GetSN(), sm);
     }
 
+
     Data *d = NULL;
     ActId *id = chp_lang->u.assign.id;
     Expr *e = chp_lang->u.assign.e;
@@ -604,7 +670,7 @@ Condition *traverse_chp(Process *proc,
 
     Variable *nv;
     if (is_declared(tsm, idc) == 0) {
-      nv = new Variable(0, 0, idc);
+      nv = new Variable(0, wc-1, idc);
       tsm->AddVar(nv);
     }
 
@@ -616,17 +682,17 @@ Condition *traverse_chp(Process *proc,
       bv = (act_booleanized_var_t *)hb->v;
 
       if (is_declared(tsm, cur_con) == 0) {
-        if (bv->ischan == 0 && bv->isint == 0) {
-          nv = new Variable(0,0,cur_con);
-        } else {
+        if (bv->ischan == 1 || bv->isint == 1) {
           nv = new Variable(0,bv->width-1,cur_con);
+        } else {
+          nv = new Variable(0,0,cur_con);
         }
         tsm->AddVar(nv);
       } else if (is_declared(tsm, cur_con) == 4) {
-        if (bv->ischan == 0 && bv->isint == 0) {
-          nv = new Variable(1,0,cur_con);
-        } else {
+        if (bv->ischan == 1 || bv->isint == 1) {
           nv = new Variable(1,bv->width-1,cur_con);
+        } else {
+          nv = new Variable(1,0,cur_con);
         }
         tsm->AddVar(nv);
       }
@@ -639,14 +705,12 @@ Condition *traverse_chp(Process *proc,
       n.second = tmp;
       s->AddNextState(n);
       d = new Data(0, wc-1,0, proc, tsm, tmp, NULL, id, e);
-      tsm->AddData(wc-1,0, sid, d);
+      tsm->AddData(sid, d);
       return tmp;
     } else if (pc) {
       d = new Data(0, wc-1, 0, proc, tsm, pc, NULL, id, e);
-      tsm->AddData(wc-1, 0, sid, d);
+      tsm->AddData(sid, d);
       return NULL;
-    } else {
-      fprintf(stdout, "Very interesting...\n");
     }
 
     break;
@@ -656,7 +720,6 @@ Condition *traverse_chp(Process *proc,
     fprintf(stdout, "//SEND\n");
 
     //adding communacation completion condition
-    //TODO: send can be more complicated
     State *s = NULL;
     if (sm->IsEmpty()) {
       s = new State(ACT_CHP_SEND, 0, sm);
@@ -675,14 +738,12 @@ Condition *traverse_chp(Process *proc,
       n.first = s;
       n.second = tmp;
       s->AddNextState(n);
-    } else if (pc) {
+    } else {
       Comma *par_com = new Comma;
       par_com->type = 0;
       par_com->c.push_back(tmp);
       par_com->c.push_back(pc);
       par_con = new Condition(par_com, sm->GetCCN(), sm);
-    } else {
-      fprintf(stdout, "Very interesting...\n");
     }
 
     Data *d = NULL;
@@ -694,8 +755,6 @@ Condition *traverse_chp(Process *proc,
     sid = buf;
 
     int wc = 0;
-    int up = 0;
-    int dn = 0;
 
     std::vector<ActId *> var_col; //collection of variables from
                                   //the send expression
@@ -741,24 +800,13 @@ Condition *traverse_chp(Process *proc,
       hb = ihash_lookup(bnl->cH, (long)main_con);
       bv = (act_booleanized_var_t *) hb->v;
 
-      if (bv->usedchp) {
-        if (dn == 0) {
-          dn = up;
-        }
-        up = up + bv->width;
+      if (!pc) {
+        d = new Data (2, bv->width-1, 0, proc, tsm, tmp, tmp, id, vex);
       } else {
-        continue;
+        d = new Data (2, bv->width-1, 0, proc, tsm, par_con, pc, id, vex);
       }
 
-      if (!pc) {
-        d = new Data (2, up-1, dn, proc, tsm, tmp, tmp, id, vex);
-      } else if (pc) {
-        d = new Data (2, up-1, dn, proc, tsm, par_con, pc, id, vex);
-      } else {
-        fprintf(stdout, "Wow!\n");
-      }
-   
-      tsm->AddData(up-1, dn, sid, d);
+      tsm->AddData(sid, d);
 
       var_col.clear();
 
@@ -791,22 +839,18 @@ Condition *traverse_chp(Process *proc,
       n.first = s;
       n.second = tmp;
       s->AddNextState(n);
-    } else if (pc) {
+    } else {
       Comma *par_com = new Comma;
       par_com->type = 0;
       par_com->c.push_back(tmp);
       par_com->c.push_back(pc);
       par_con = new Condition(par_com, sm->GetCCN(), sm);
-    } else {
-      fprintf(stdout, "Very interesting...\n");
     }
 
     Data *d = NULL;
     act_connection *ccon;         //channel connection
-    ccon = id->Canonical(scope);  //caconical connection
+    ccon = id->Canonical(scope);  //canonical connection
     int wc = 0;                   //channel total width
-    int up = 0;                   //channel slice upper boarder
-    int dn = 0;                   //channel slice lower boarder
     ihash_bucket_t *hb;
     act_booleanized_var_t *bv; //booleanized channel
     hb = ihash_lookup(bnl->cH, (long)ccon);
@@ -844,34 +888,18 @@ Condition *traverse_chp(Process *proc,
         tsm->AddVar(nv);
       }
 
-      if (bv->usedchp) {
-        if (dn == 0) {
-          dn = up;
-        }
-        up = up + bv->width;
-      } else {
-        fprintf(stdout, "WARNING: How is this even possible!\n");
-      }
-
-      if (up > wc) {
-        fprintf(stdout, "WARNING: Variable is out of range!\n");
-      }
-
       std::string sid;
       char buf[1024];
       vid->sPrint(buf,1024);
       sid = buf;
 
       if (!pc) {
-        d = new Data (1, up-1, dn, proc, tsm, tmp, tmp, vid, id);
-      } else if (pc) {
-        d = new Data (1, up-1, dn, proc, tsm, par_con, pc, vid, id);
+        d = new Data (1, bv->width-1, 0, proc, tsm, tmp, tmp, vid, id);
       } else {
-        fprintf(stdout, "Wow!\n");
+        d = new Data (1, bv->width-1, 0, proc, tsm, par_con, pc, vid, id);
       }
 
-      tsm->AddData(bv->width-1, 0, sid, d);
-
+      tsm->AddData(sid, d);
     }
 
     return tmp;

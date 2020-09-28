@@ -149,7 +149,7 @@ public:
   void AddCondition(Condition *c);
   void AddSize();
   void AddKid(StateMachine *sm);
-  void AddData(int, int, std::string&, Data *);
+  void AddData(std::string&, Data *);
   void AddPort(Port *);
   void AddVar(Variable *);
 
@@ -186,7 +186,7 @@ private:
 
   State *top;
 
-  std::map<std::tuple<int, int,std::string>, std::vector<Data *>> data;
+  std::map<std::string, std::vector<Data *>> data;
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;

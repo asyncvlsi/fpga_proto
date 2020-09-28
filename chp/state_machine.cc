@@ -64,11 +64,7 @@ void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
 void StateMachine::AddVar(Variable *v_){ vars.push_back(v_); }
-void StateMachine::AddData(int up, int dn, std::string &id, Data *dd) {
-  std::tuple<int, int, std::string> key;
-  key = make_tuple(up, dn, id);
-  data[key].push_back(dd);
-}
+void StateMachine::AddData(std::string &id, Data *dd) {data[id].push_back(dd);}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
     commun_num++;
