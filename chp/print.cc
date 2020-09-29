@@ -238,7 +238,11 @@ void StateMachine::PrintVerilog() {
     fprintf(stdout, " <= 0;\n");
     fprintf(stdout, "end\n");
     for (auto dd : id.second) {
-      dd->PrintVerilogCondition();
+			if (dd->GetType() != 2) {
+	      dd->PrintVerilogCondition();
+			} else {
+				dd->PrintVerilogConditionUP();
+			}
       fprintf(stdout, " begin\n\t");
       dd->PrintVerilogAssignment();
       fprintf(stdout, "end\n");
