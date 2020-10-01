@@ -89,6 +89,9 @@ Data::~Data () {}
 /*
  *  Port Class
  */
+int Port::GetChan() {
+	return ischan;
+}
 
 int Port::GetDir() {
   return dir;
@@ -98,36 +101,19 @@ act_connection *Port::GetCon(){
   return connection;
 }
 
-void Port::Print(){
-  if (dir == 0) {
-    if (ischan) {
-      fprintf(stdout, "\t,output reg\t");
-      connection->toid()->Print(stdout);
-      fprintf(stdout, "_valid\n");
-      fprintf(stdout, "\t,input     \t");
-      connection->toid()->Print(stdout);
-      fprintf(stdout, "_ready\n");
-    }
-    fprintf(stdout, "\t,output reg\t");
-  } else {
-    if (ischan) {
-      fprintf(stdout, "\t,output reg\t");
-      connection->toid()->Print(stdout);
-      fprintf(stdout, "_ready\n");
-      fprintf(stdout, "\t,input     \t");
-      connection->toid()->Print(stdout);
-      fprintf(stdout, "_valid\n");
-    }
-    fprintf(stdout, "\t,input     \t");
-  }
-  fprintf(stdout, "[%i:0]\t", width-1);
-  connection->toid()->Print(stdout);
+int Port::GetInst() {
+	return inst;
+}
+
+void Port::SetInst() {
+	inst = 1;
 }
 
 Port::Port(){
   dir = 0;
   width = 0;
   ischan = 0;
+	inst = 0;
   connection = NULL;
 }
 
@@ -135,6 +121,7 @@ Port::Port(int dir_, int width_, int chan_, act_connection *c_){
   dir = dir_;
   width = width_;
   ischan = chan_;
+	inst = 0;
   connection = c_;
 }
 
@@ -148,15 +135,21 @@ act_connection *Variable::GetCon() {
   return id;
 }
 
+int Variable::IsChan() {
+	return ischan;
+}
+
 Variable::Variable() {
   type = 0;
   width = 0;
-  id = 0;
+	ischan = 0;
+	id = NULL;
 }
 
-Variable::Variable(int type_, int width_, act_connection *id_) {
+Variable::Variable(int type_, int width_, int ischan_, act_connection *id_) {
   type = type_;
   width = width_;
+	ischan = ischan_;
   id = id_;
 }
 

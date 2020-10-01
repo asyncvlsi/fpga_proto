@@ -127,6 +127,34 @@ private:
   void PrintType();
 };
 
+class StateMachineInst {
+public:
+
+	StateMachineInst();
+	StateMachineInst(Process *, ValueIdx *, char *, std::vector<Port *>&);
+	~StateMachineInst();
+
+	void SetSM(StateMachine *);
+
+	Process *GetProc();
+	std::vector<Port *> GetPorts();
+
+	void PrintVerilog();
+
+private:
+
+	Process *p;
+
+	ValueIdx *name;
+
+	char *array;
+
+	std::vector<Port *> ports;
+
+	StateMachine *sm;
+
+};
+
 //State machine which controls
 //datapath of the circuit model
 class StateMachine {
@@ -152,6 +180,7 @@ public:
   void AddData(std::string&, Data *);
   void AddPort(Port *);
   void AddVar(Variable *);
+	void AddInst(StateMachineInst *);
 
   int GetSize();
   int GetNum();
@@ -165,6 +194,7 @@ public:
   std::vector<Variable *> GetVars();
   std::vector<Port *> GetPorts();
   Process *GetProc();
+	std::vector<StateMachineInst *> GetInst();
 
   void PrintParent(StateMachine *);
   void PrintPlain();
@@ -185,6 +215,8 @@ private:
   int comma_num;
 
   State *top;
+
+	std::vector<StateMachineInst *> inst;
 
   std::map<std::string, std::vector<Data *>> data;
 
@@ -220,6 +252,9 @@ public:
 
   void PrintPlain();
   void PrintVerilog();
+
+	StateMachine *Head();
+	StateMachine *Next();
 
 private:
 
@@ -309,14 +344,20 @@ public:
 
   int GetDir();
   act_connection *GetCon();
+	int GetChan();
+	int GetInst();
+
+	void SetInst();
 
   void Print();
+	void PrintName();
 
 private:
 
   int dir;  //0 - output; 1 - input
   int width;
   int ischan; //0 - no, 1 - yes;
+	int inst;
 
   act_connection *connection;
 
@@ -328,9 +369,11 @@ class Variable {
 public:
 
   Variable();
-  Variable(int, int, act_connection *);
+  Variable(int, int, int, act_connection *);
   
   act_connection *GetCon();
+
+	int IsChan();
 
   void PrintVerilog();
 
@@ -338,6 +381,7 @@ private:
 
   int type;   //0 - reg, 1 - wire
   int width;  //variable bit-width
+	int ischan; //0 - no, 1 - yes
 
   act_connection *id;  //name
 

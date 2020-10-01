@@ -93,7 +93,7 @@ void StateMachine::PrintPlain() {
 
 void StateMachine::PrintVerilogVars() {
   for (auto v : vars) {
-    v->PrintVerilog(); 
+    v->PrintVerilog();
   }
   fprintf(stdout, "\n");
 }
@@ -131,8 +131,8 @@ void StateMachine::PrintVerilogHeader() {
     fprintf(stdout, "`timescale 1ns/1ps\n\n");
     std::string name = get_module_name(p);
     fprintf(stdout, "module \\%s (\n", name.c_str());
-    fprintf(stdout, "\t input\tclock\n");
-    fprintf(stdout, "\t,input\treset\n");
+    fprintf(stdout, "\t input\t\\clock\n");
+    fprintf(stdout, "\t,input\t\\reset\n");
     for (auto pp : ports) {
       pp->Print();
       fprintf(stdout, "\n");
@@ -233,7 +233,7 @@ void StateMachine::PrintVerilog() {
 
   for (auto id : data) {
     fprintf(stdout, "always @(posedge clock)\n");
-    fprintf(stdout, "if (reset) begin\n\t");
+    fprintf(stdout, "if (reset) begin\n\t\\");
     fprintf(stdout, "%s", id.first.c_str());
     fprintf(stdout, " <= 0;\n");
     fprintf(stdout, "end\n");
@@ -243,7 +243,7 @@ void StateMachine::PrintVerilog() {
 			} else {
 				dd->PrintVerilogConditionUP();
 			}
-      fprintf(stdout, " begin\n\t");
+      fprintf(stdout, " begin\n\t\\");
       dd->PrintVerilogAssignment();
       fprintf(stdout, "end\n");
       if (dd->GetType() == 1 || dd->GetType() == 2) {
@@ -272,11 +272,50 @@ void StateMachine::PrintVerilog() {
     fprintf(stdout, "\n");
   }
 
+	for (auto i : inst) {
+		i->PrintVerilog();
+	}
+
   if (p) {
     fprintf(stdout, "\n\nendmodule\n\n");
   }
  
 }
+/*
+ *	State Machine Instance
+ */
+void StateMachineInst::PrintVerilog(){
+	std::string mn = get_module_name(p);
+	if (array) {
+		fprintf(stdout, "\\%s \\%s[%s] (\n", mn.c_str(), array, name->getName());
+	} else {
+		fprintf(stdout, "\\%s \\%s (\n", mn.c_str(), name->getName());
+	}
+	fprintf(stdout, "\t.\\clock (\\clock )\n");
+	fprintf(stdout, "\t,.\\reset (\\reset )\n");
+	for (auto i = 0; i < ports.size(); i++) {
+		fprintf(stdout, "\t,.\\");
+		sm->GetPorts()[i]->PrintName();
+		fprintf(stdout, " (\\");
+		ports[i]->PrintName();
+		fprintf(stdout, " )\n");
+		if (ports[i]->GetChan() == 1) {
+			fprintf(stdout, "\t,.\\");
+			sm->GetPorts()[i]->PrintName();
+			fprintf(stdout, "_ready (\\");
+			ports[i]->PrintName();
+			fprintf(stdout, "_ready )\n");
+			fprintf(stdout, "\t,.\\");
+			sm->GetPorts()[i]->PrintName();
+			fprintf(stdout, "_valid (\\");
+			ports[i]->PrintName();
+			fprintf(stdout, "_valid )\n");
+
+		}
+	}
+	fprintf(stdout, ");\n\n");
+}
+
 
 /*
  *  State Class
@@ -725,7 +764,7 @@ void Data::PrintVerilogHS(int f){
 
   if (f == 0) {
     fprintf(stdout, "always @(posedge clock)\n");
-    fprintf(stdout, "if (reset) begin\n\t");
+    fprintf(stdout, "if (reset) begin\n\t\\");
     if (type == 1) {
       u.recv.chan->Print(stdout);
     } else if (type == 2) {
@@ -740,7 +779,7 @@ void Data::PrintVerilogHS(int f){
     }
     fprintf(stdout, "end\n");
   } else {
-    fprintf(stdout, " begin\n\t");
+    fprintf(stdout, " begin\n\t\\");
     if (type == 1) {
       u.recv.chan->Print(stdout);
     } else if (type == 2) {
@@ -822,7 +861,59 @@ void Variable::PrintVerilog (){
   if (width > 0) {
     fprintf(stdout, "[%i:0]\t", width);
   }
+	fprintf(stdout, "\\");
   id->toid()->Print(stdout);
   fprintf(stdout, " ;\n");
+	if (ischan == 1) {
+		if (type == 0) {
+			fprintf(stdout, "reg\t\\");
+			id->toid()->Print(stdout);
+			fprintf(stdout, "_valid ;\n");
+			fprintf(stdout, "wire\t\\");
+			id->toid()->Print(stdout);
+			fprintf(stdout, "_ready ;\n");
+		} else {
+			fprintf(stdout, "wire\t\\");
+			id->toid()->Print(stdout);
+			fprintf(stdout, "_valid ;\n");
+			fprintf(stdout, "reg\t\\");
+			id->toid()->Print(stdout);
+			fprintf(stdout, "_ready ;\n");
+		}
+	}
 }
+
+/*
+ *	Port Class
+ */
+void Port::PrintName(){
+	connection->toid()->Print(stdout);
+}
+
+void Port::Print(){
+  if (dir == 0) {
+    if (ischan) {
+      fprintf(stdout, "\t,output reg\t\\");
+      connection->toid()->Print(stdout);
+      fprintf(stdout, "_valid\n");
+      fprintf(stdout, "\t,input     \t\\");
+      connection->toid()->Print(stdout);
+      fprintf(stdout, "_ready\n");
+    }
+    fprintf(stdout, "\t,output reg\t");
+  } else {
+    if (ischan) {
+      fprintf(stdout, "\t,output reg\t\\");
+      connection->toid()->Print(stdout);
+      fprintf(stdout, "_ready\n");
+      fprintf(stdout, "\t,input     \t\\");
+      connection->toid()->Print(stdout);
+      fprintf(stdout, "_valid\n");
+    }
+    fprintf(stdout, "\t,input     \t");
+  }
+  fprintf(stdout, "[%i:0]\t\\", width-1);
+  connection->toid()->Print(stdout);
+}
+
 }

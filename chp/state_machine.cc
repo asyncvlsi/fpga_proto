@@ -7,6 +7,10 @@ namespace fpga {
  *  CHP Project Class
  */
 
+StateMachine *CHPProject::Head() {
+	return hd;
+}
+
 void CHPProject::Append(StateMachine *sm) {
   if (hd) {
     tl->SetNext(sm);
@@ -56,10 +60,23 @@ int StateMachine::IsPort(act_connection *c_) {
       }
     }
   }
-  //for (auto p : instports) {}
+  for (auto in : inst) {
+		for (auto ip : in->GetPorts()) {
+			if (ip->GetCon() == c_){
+				if (ip->GetDir() == 0) {
+					return 2;
+				} else {
+					return 1;
+				}
+			}
+		}
+	}
   return 0;
 }
 
+void StateMachine::AddInst (StateMachineInst *inst_) {
+	inst.push_back(inst_);
+}
 void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
@@ -93,6 +110,7 @@ std::vector<Port *> StateMachine::GetPorts(){ return ports; }
 StateMachine *StateMachine::GetPar() { return par; }
 StateMachine *StateMachine::GetNext() { return next; }
 Process *StateMachine::GetProc() { return p; }
+std::vector<StateMachineInst *> StateMachine::GetInst() { return inst; }
 
 void StateMachine::SetNext(StateMachine *smn) { next = smn; }
 void StateMachine::SetProcess(Process *p_) { p = p_; }
@@ -146,6 +164,44 @@ StateMachine::~StateMachine() {
   delete top;
   delete p;
 }
+
+/*
+ *	State Machine Instance Class
+ */
+void StateMachineInst::SetSM(StateMachine *sm_){
+	sm = sm_;
+}
+
+Process *StateMachineInst::GetProc(){
+	return p;
+}
+
+std::vector<Port *> StateMachineInst::GetPorts(){
+	return ports;
+}
+
+StateMachineInst::StateMachineInst(){
+	p = NULL;
+	name = NULL;
+	array = NULL;
+	sm = NULL;
+};
+
+StateMachineInst::StateMachineInst(
+																	Process *p_,
+																	ValueIdx *name_,
+																	char *array_,
+																	std::vector<Port *> &ports_
+																	){
+	p = p_;
+	name = name_;
+	array = array_;
+	ports = ports_;
+	sm = NULL;
+
+}
+
+StateMachineInst::~StateMachineInst(){};
 
 /*
  *  State Class

@@ -45,8 +45,8 @@ bool is_simple(int type) {
 //0 - not declared
 //1 - declared as variable
 //2 - declared as port
-//3 - declated as instance port
-//4 - ???(what does this mean?)
+//3 - declared as instance port input
+//4 - declared as instance port output
 int is_declared (StateMachine *sm, act_connection *v) {
   std::vector<Variable *> vv;
   vv = sm->GetVars();
@@ -58,7 +58,17 @@ int is_declared (StateMachine *sm, act_connection *v) {
   for (auto iv : vp) {
     if (iv->GetCon() == v) { return 2; }
   }
-  
+  std::vector<StateMachineInst *> iv;
+	iv = sm->GetInst();
+	for (auto in : iv) {
+		for (auto ip : in->GetPorts()) {
+			if (ip->GetCon() == v && ip->GetDir() == 1) {
+				return 3;
+			} else if (ip->GetCon() == v && ip->GetDir() == 0) {
+				return 4;
+			}
+		}
+	}
   return 0;
 }
 
@@ -670,7 +680,7 @@ Condition *traverse_chp(Process *proc,
 
     Variable *nv;
     if (is_declared(tsm, idc) == 0) {
-      nv = new Variable(0, wc-1, idc);
+      nv = new Variable(0, wc-1, 0, idc);
       tsm->AddVar(nv);
     }
 
@@ -683,16 +693,16 @@ Condition *traverse_chp(Process *proc,
 
       if (is_declared(tsm, cur_con) == 0) {
         if (bv->ischan == 1 || bv->isint == 1) {
-          nv = new Variable(0,bv->width-1,cur_con);
+          nv = new Variable(0,bv->width-1, 0,cur_con);
         } else {
-          nv = new Variable(0,0,cur_con);
+          nv = new Variable(0,0,0,cur_con);
         }
         tsm->AddVar(nv);
-      } else if (is_declared(tsm, cur_con) == 4) {
+      } else if (is_declared(tsm, cur_con) == 3) {
         if (bv->ischan == 1 || bv->isint == 1) {
-          nv = new Variable(1,bv->width-1,cur_con);
+          nv = new Variable(1,bv->width-1,0,cur_con);
         } else {
-          nv = new Variable(1,0,cur_con);
+          nv = new Variable(1,0,0,cur_con);
         }
         tsm->AddVar(nv);
       }
@@ -727,7 +737,7 @@ Condition *traverse_chp(Process *proc,
     }
 
     ActId *id;
-    id = chp_lang->u.comm.chan;
+    id = chp_lang->u.comm.chan->Canonical(scope)->toid();
     tmp = new Condition(id, sm->GetCN(), sm);
 
     std::pair<State *, Condition *> n;
@@ -765,6 +775,12 @@ Condition *traverse_chp(Process *proc,
     bv = (act_booleanized_var_t *)hb->v;
     wc = bv->width;
 
+		if (is_declared(tsm, ccon) == 3) {
+			Variable *rv = new Variable(0, wc-1, 1, ccon);
+			tsm->AddVar(rv);
+		}
+
+
     l = chp_lang->u.comm.rhs;
     for (li = list_first(l); li; li = list_next(li)) {
 
@@ -778,19 +794,22 @@ Condition *traverse_chp(Process *proc,
         Variable *nv;
         if (is_declared(tsm,cur_con) == 0) {
           if (bv->isint == 1 || bv->ischan == 1) {
-            nv = new Variable(0, bv->width-1, cur_con);
+            nv = new Variable(0, bv->width-1, 0, cur_con);
           } else {
-            nv = new Variable(0, 0, cur_con);
+            nv = new Variable(0, 0, 0, cur_con);
           }
           tsm->AddVar(nv);
         } else if (is_declared(tsm, cur_con) == 4) {
           if (bv->isint == 1 || bv->ischan == 1) {
-            Variable *nv = new Variable(1, bv->width-1, cur_con);
+            Variable *nv = new Variable(1, bv->width-1, 0, cur_con);
           } else {
-            Variable *nv = new Variable(1, 0, cur_con);
+            Variable *nv = new Variable(1, 0, 0, cur_con);
           }
           tsm->AddVar(nv);
-        }
+        } else if (is_declared(tsm, cur_con) == 3) {
+					fprintf(stdout, "WHAAAAAAAT?!\n");
+					exit(1);
+      	}
       }
 
       ActId *main_var;
@@ -829,7 +848,7 @@ Condition *traverse_chp(Process *proc,
     }
 
     ActId *id;
-    id = chp_lang->u.comm.chan;
+    id = chp_lang->u.comm.chan->Canonical(scope)->toid();
     tmp = new Condition(id, sm->GetCN(), sm);
 
     std::pair<State *, Condition *> n;
@@ -857,6 +876,11 @@ Condition *traverse_chp(Process *proc,
     bv = (act_booleanized_var_t *)hb->v;
     wc = bv->width;
 
+		if (is_declared(tsm, ccon) == 4) {
+			Variable *rv = new Variable(1, wc-1, 1, ccon);
+			tsm->AddVar(rv);
+		}
+
     std::tuple<int, int, std::string> key;
  
     l = chp_lang->u.comm.rhs;
@@ -874,18 +898,21 @@ Condition *traverse_chp(Process *proc,
       Variable *nv;
       if (is_declared(tsm, vcon) == 0) {
         if (bv->isint) {
-          nv = new Variable(0, bv->width-1, vcon);
+          nv = new Variable(0, bv->width-1, 0, vcon);
         } else {
-          nv = new Variable(0, 0, vcon);
+          nv = new Variable(0, 0, 0, vcon);
+        }
+        tsm->AddVar(nv);
+      } else if (is_declared(tsm, vcon) == 3) {
+        if (bv->isint) {
+          nv = new Variable(0, bv->width-1, 0, vcon);
+        } else {
+          nv = new Variable(0, 0, 0, vcon);
         }
         tsm->AddVar(nv);
       } else if (is_declared(tsm, vcon) == 4) {
-        if (bv->isint) {
-          nv = new Variable(1, bv->width-1, vcon);
-        } else {
-          nv = new Variable(1, 0, vcon);
-        }
-        tsm->AddVar(nv);
+				fprintf(stdout, "WHAAAAAAAT?!\n");
+				exit(1);
       }
 
       std::string sid;
@@ -959,6 +986,105 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   }
 }
 
+//Map machine instances to their origins
+void map_instances(CHPProject *cp){
+	for (auto pr0 = cp->Head(); pr0; pr0 = pr0->GetNext()) {
+		for (auto inst : pr0->GetInst()) {
+			for (auto pr1 = cp->Head(); pr1; pr1 = pr1->GetNext()) {
+				if (inst->GetProc() == pr1->GetProc()) {
+					inst->SetSM(pr1);
+				}
+			}
+		}
+	}
+}
+
+//Adding all instances in the current process
+void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
+
+	ActInstiter i(cs);
+
+	StateMachineInst *smi;
+	
+	int iport = 0;
+	
+	for (i = i.begin(); i != i.end(); i++) {
+		ValueIdx *vx = *i;
+		if (TypeFactory::isProcessType(vx->t)) {
+			if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
+        continue;
+			}
+
+      act_boolean_netlist_t *sub;
+      sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
+
+      int ports_exist = 0;
+      for (int j = 0; j < A_LEN(sub->chpports); j++) {
+        if (sub->chpports[j].omit == 0) {
+          ports_exist = 1;
+          break;
+        }
+      }
+			if (ports_exist == 1) {
+				if (vx->t->arrayInfo()) {
+          Arraystep *as = vx->t->arrayInfo()->stepper();
+          while (!as->isend()) {
+						Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+						char *ar = as->string();
+						std::vector<Port *> ports;
+						for (auto j = 0; j < A_LEN(sub->chpports); j++){
+							if (sub->chpports[j].omit) { continue; }
+							act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+
+							ihash_bucket *hb;
+							hb = ihash_lookup(bnl->cH, (long)c);
+							act_booleanized_var_t *bv;
+							bv = (act_booleanized_var_t *)hb->v;
+
+							bv->id->toid()->Print(stdout);
+
+							int dir = sub->chpports[j].input;
+							int width = bv->width;
+							int ischan = bv->ischan;
+
+							Port *ip = new Port(dir,width,ischan,c);
+							ip->SetInst();
+							ports.push_back(ip);
+							iport++;
+						}
+						smi = new StateMachineInst(p,vx,ar,ports);
+					}
+				} else {
+					Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+					char *ar = NULL;
+					std::vector<Port *> ports;
+					for (auto j = 0; j < A_LEN(sub->chpports); j++){
+						if (sub->chpports[j].omit) { continue; }
+						act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+
+						ihash_bucket *hb;
+						hb = ihash_lookup(bnl->cH, (long)c);
+						act_booleanized_var_t *bv;
+						bv = (act_booleanized_var_t *)hb->v;
+
+						int dir = sub->chpports[j].input;
+						int width = bv->width;
+						int ischan = bv->ischan;
+
+						Port *ip = new Port(dir,width,ischan,c);
+						ip->SetInst();
+						ports.push_back(ip);
+						iport++;
+					}
+					smi = new StateMachineInst(p,vx,ar,ports);
+				}
+				sm->AddInst(smi);
+			}
+		}
+	}
+
+}
+
 //Function to traverse act data strcutures and walk
 //through entire act project hierarchy while building
 //state machine for each process
@@ -995,7 +1121,8 @@ void traverse_act (Process *p, CHPProject *cp) {
     if (TypeFactory::isProcessType(vx->t)) {
       traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp);
     }
-  } 
+  }
+	fprintf(stdout, "=======================\n");
 
   act_chp_lang_t *chp_lang = chp->c;
 
@@ -1007,6 +1134,9 @@ void traverse_act (Process *p, CHPProject *cp) {
 
   //add ports
   add_ports(cs, bnl, sm);
+
+	//add instances
+	add_instances(cs, bnl, sm);
 
   //run chp traverse to build state machine
   traverse_chp(p, chp_lang, sm, sm, NULL);
@@ -1025,6 +1155,7 @@ CHPProject *build_machine (Act *a, Process *p) {
   CHPProject *cp = new CHPProject();
  
   traverse_act (p, cp);
+	map_instances(cp);
 
   return cp;
 }
