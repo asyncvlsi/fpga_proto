@@ -150,7 +150,7 @@ void StateMachine::PrintVerilogHeader() {
 void StateMachine::PrintVerilogState(std::vector<std::pair<State *, Condition *>> s) {
   for (auto ss : s) {
     if (ss.first->isPrinted()) { continue; }
-    ss.first->PrintVerilog(0);
+    ss.first->PrintVerilog(2);
   }
   for (auto ss : s) {
     if (ss.first->isPrinted()) { continue; }
@@ -158,10 +158,14 @@ void StateMachine::PrintVerilogState(std::vector<std::pair<State *, Condition *>
   }
 }
 
-void StateMachine::PrintParent(StateMachine *p) {
-  fprintf(stdout, "sm%i_", p->GetNum());
+void StateMachine::PrintParent(StateMachine *p, int f = 0) {
+	if (f == 0) {
+	  fprintf(stdout, "sm%i_", p->GetNum());
+	} else if (f == 2) {
+	  fprintf(stdout, "SM%i_", p->GetNum());
+	}
   if (p->par) {
-    PrintParent(p->GetPar());
+    PrintParent(p->GetPar(), f);
   }
 }
 
@@ -171,7 +175,7 @@ void StateMachine::PrintVerilogParameters(){
   fprintf(stdout, " = 0;\n");
   for (auto i = 0; i < size; i++) {
     fprintf(stdout, "localparam ");
-    top->PrintVerilogName(1);
+    top->PrintVerilogName(2);
     fprintf(stdout, "_%i = %i;\n", i, i);
   }
   fprintf(stdout, "\n");
@@ -217,11 +221,11 @@ void StateMachine::PrintVerilog() {
     PrintParent(par);
   }
   fprintf(stdout, "state <= ");
-  fprintf(stdout, "sm%i_", number);
+  fprintf(stdout, "SM%i_", number);
   if (par) {
-    PrintParent(par);
+    PrintParent(par, 2);
   }
-  fprintf(stdout, "state_0;\n");
+  fprintf(stdout, "STATE_0;\n");
   
   top->PrintVerilog();
   PrintVerilogState(top->GetNextState());
@@ -287,7 +291,7 @@ void StateMachine::PrintVerilog() {
 void StateMachineInst::PrintVerilog(){
 	std::string mn = get_module_name(p);
 	if (array) {
-		fprintf(stdout, "\\%s \\%s[%s] (\n", mn.c_str(), array, name->getName());
+		fprintf(stdout, "\\%s \\%s%s (\n", mn.c_str(), name->getName(), array);
 	} else {
 		fprintf(stdout, "\\%s \\%s (\n", mn.c_str(), name->getName());
 	}
@@ -321,10 +325,14 @@ void StateMachineInst::PrintVerilog(){
  *  State Class
  */
 
-void State::PrintParent(StateMachine *p) {
-  fprintf(stdout, "sm%i_", p->GetNum());
+void State::PrintParent(StateMachine *p, int f = 0) {
+	if (f == 0) {
+	  fprintf(stdout, "sm%i_", p->GetNum());
+	} else if (f == 1) {
+		fprintf(stdout, "SM%i_", p->GetNum());
+	}
   if (p->GetPar()) {
-    PrintParent(p->GetPar());
+    PrintParent(p->GetPar(), f);
   }
 }
 
@@ -387,12 +395,20 @@ void State::PrintType(){
 }
 
 void State::PrintVerilogName(int f = 0) {
-  if (par) PrintParent(par);
+  if (par) {
+		if (f == 2) {
+			PrintParent(par, 1);
+		} else {
+			PrintParent(par, 0);
+		}
+	}
   if (f == 0) {
     fprintf(stdout, "state_%i", number);
-  } else {
+  } else if (f == 1) {
     fprintf(stdout, "state");
-  }
+  } else if (f == 2) {
+		fprintf(stdout, "STATE");
+	}
 }
 
 void State::PrintVerilog(int p) {
@@ -404,8 +420,8 @@ void State::PrintVerilog(int p) {
     fprintf(stdout, ")\n\t");
     if (par) PrintParent(par);
     fprintf(stdout, "state <= ");
-    if (par) PrintParent(par);
-    fprintf(stdout, "state_%i", c.first->GetNum());
+    if (par) PrintParent(par,1);
+    fprintf(stdout, "STATE_%i", c.first->GetNum());
     fprintf(stdout, ";\n");
   for (auto c : ns) {
     c.first->PrintVerilog();
@@ -483,6 +499,7 @@ void PrintExpression(Expr *e) {
     case (E_VAR):
       ActId *id;
       id = (ActId *)e->u.e.l;
+			fprintf(stdout, "\\");
       id->Print(stdout);
       break;
     case (E_QUERY):
@@ -543,7 +560,9 @@ void PrintExpression(Expr *e) {
       fprintf(stdout, " : ");
       break;
     case (E_PROBE):
-      fprintf(stdout, "PROBE");
+			id = (ActId *)e->u.e.l;
+			id->Print(stdout);
+			fprintf(stdout,"_valid");
       break;
     case (E_COMMA):
       fprintf(stdout, "COMMA");
@@ -599,10 +618,14 @@ void Condition::PrintExpr(Expr *e) {
   PrintExpression(e);
 }
 
-void Condition::PrintScope(StateMachine *sc){
-  fprintf(stdout, "sm%i_", sc->GetNum());
+void Condition::PrintScope(StateMachine *sc, int f = 0){
+	if (f == 0) {
+	  fprintf(stdout, "sm%i_", sc->GetNum());
+	} else if (f == 1) {
+	  fprintf(stdout, "SM%i_", sc->GetNum());
+	}
   if (sc->GetPar()) {
-    PrintScope(sc->GetPar());
+    PrintScope(sc->GetPar(), f);
   }
 }
 
@@ -711,8 +734,8 @@ void Condition::PrintVerilog(int f){
         fprintf(stdout, "state_cond_%i = ", num);
         PrintScope(sm);
         fprintf(stdout, "state == "); 
-        PrintScope(sm);
-        fprintf(stdout, "state_%i", u.s->GetNum());
+        PrintScope(sm,1);
+        fprintf(stdout, "STATE_%i", u.s->GetNum());
         break;
       case (3) :
         PrintScope(scope);
@@ -821,7 +844,7 @@ void Data::PrintVerilogAssignment() {
     fprintf(stdout, " ;\n");
   } else if (type == 1) {
     id->Print(stdout);
-    fprintf(stdout, " <= ");
+    fprintf(stdout, " <= \\");
     u.recv.chan->Print(stdout);
     fprintf(stdout, " ;\n");
   } else if (type == 2) {

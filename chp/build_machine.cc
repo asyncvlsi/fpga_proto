@@ -84,7 +84,9 @@ void collect_vars(Expr *e, std::vector<ActId *> &vars) {
     return;
   } else {
     if (e->u.e.l) {collect_vars(e->u.e.l, vars); }
-    if (e->u.e.r) {collect_vars(e->u.e.r, vars); }
+		if (e->type != E_COMPLEMENT) {
+	    if (e->u.e.r) {collect_vars(e->u.e.r, vars); }
+		}
   }
 }
 
@@ -352,6 +354,8 @@ Condition *traverse_chp(Process *proc,
 		zero_cond = new Condition(s, sm->GetSN(), sm);
 		sm->AddCondition(zero_cond);
 
+		int child_store = 0;
+
     //walk through all selection options
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
@@ -378,11 +382,12 @@ Condition *traverse_chp(Process *proc,
 					guard_com->c.push_back(zero_cond);
 					if (pc) { guard_com->c.push_back(pc); }
 					guard_com->c.push_back(guard);
-					Condition *full_guard = new Condition(guard_com, sm->GetCCN(), sm);
+					Condition *full_guard;
+					full_guard = new Condition(guard_com, sm->GetCCN(), sm);
           n.first = ss;
           n.second = full_guard;
           s->AddNextState(n);
-					sm->AddCondition(full_guard);	
+					sm->AddCondition(full_guard);
 
 					if (pc) {
 						Comma *child_com = new Comma;
@@ -410,7 +415,10 @@ Condition *traverse_chp(Process *proc,
           }
           if (tmp) {
             vc.push_back(tmp);
-          }
+				//		sm->AddCondition(tmp);
+          } else {
+						vc.push_back(child_cond);
+					}
         }
       }
     }
@@ -743,7 +751,6 @@ Condition *traverse_chp(Process *proc,
     std::pair<State *, Condition *> n;
     Condition *par_con = NULL;
 
-
     if (!pc) {
       n.first = s;
       n.second = tmp;
@@ -801,9 +808,9 @@ Condition *traverse_chp(Process *proc,
           tsm->AddVar(nv);
         } else if (is_declared(tsm, cur_con) == 4) {
           if (bv->isint == 1 || bv->ischan == 1) {
-            Variable *nv = new Variable(1, bv->width-1, 0, cur_con);
+            nv = new Variable(1, bv->width-1, 0, cur_con);
           } else {
-            Variable *nv = new Variable(1, 0, 0, cur_con);
+            nv = new Variable(1, 0, 0, cur_con);
           }
           tsm->AddVar(nv);
         } else if (is_declared(tsm, cur_con) == 3) {
@@ -811,13 +818,15 @@ Condition *traverse_chp(Process *proc,
 					exit(1);
       	}
       }
-
-      ActId *main_var;
-      main_var = var_col[0];
-      act_connection *main_con;
-      main_con = main_var->Canonical(scope);
-      hb = ihash_lookup(bnl->cH, (long)main_con);
-      bv = (act_booleanized_var_t *) hb->v;
+			
+			if (var_col.size() > 0) {
+      	ActId *main_var;
+      	main_var = var_col[0];
+      	act_connection *main_con;
+      	main_con = main_var->Canonical(scope);
+      	hb = ihash_lookup(bnl->cH, (long)main_con);
+      	bv = (act_booleanized_var_t *) hb->v;
+			}
 
       if (!pc) {
         d = new Data (2, bv->width-1, 0, proc, tsm, tmp, tmp, id, vex);
@@ -1041,8 +1050,6 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 							act_booleanized_var_t *bv;
 							bv = (act_booleanized_var_t *)hb->v;
 
-							bv->id->toid()->Print(stdout);
-
 							int dir = sub->chpports[j].input;
 							int width = bv->width;
 							int ischan = bv->ischan;
@@ -1053,6 +1060,8 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 							iport++;
 						}
 						smi = new StateMachineInst(p,vx,ar,ports);
+						sm->AddInst(smi);
+						as->step();
 					}
 				} else {
 					Process *p = dynamic_cast<Process *>(vx->t->BaseType());
@@ -1077,12 +1086,11 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 						iport++;
 					}
 					smi = new StateMachineInst(p,vx,ar,ports);
+					sm->AddInst(smi);
 				}
-				sm->AddInst(smi);
 			}
 		}
 	}
-
 }
 
 //Function to traverse act data strcutures and walk
@@ -1122,7 +1130,7 @@ void traverse_act (Process *p, CHPProject *cp) {
       traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp);
     }
   }
-	fprintf(stdout, "=======================\n");
+	fprintf(stdout, "//=======================\n");
 
   act_chp_lang_t *chp_lang = chp->c;
 

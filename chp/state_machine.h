@@ -38,7 +38,7 @@ public:
   StateMachine *GetScope();
 
   void PrintPlain();
-  //f=0 - Name Only
+  //f=0 - Name
   //f=1 - Name + Expression 
   //f=2 - Expression
   void PrintVerilog(int f);
@@ -49,7 +49,7 @@ public:
 private:
   
   void PrintExpr(Expr *);
-  void PrintScope(StateMachine *sc);
+  void PrintScope(StateMachine *sc, int);
 
   int type; //0 - communication completion
             //1 - selection/loop guard
@@ -123,7 +123,7 @@ private:
   //just to avoid loop
   unsigned int printed:1;
 
-  void PrintParent(StateMachine *p);
+  void PrintParent(StateMachine *p, int);
   void PrintType();
 };
 
@@ -196,7 +196,7 @@ public:
   Process *GetProc();
 	std::vector<StateMachineInst *> GetInst();
 
-  void PrintParent(StateMachine *);
+  void PrintParent(StateMachine *, int);
   void PrintPlain();
   void PrintVerilog();
   void PrintVerilogHeader();
