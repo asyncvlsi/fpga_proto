@@ -633,87 +633,91 @@ Condition *traverse_chp(Process *proc,
 
     fprintf(stdout, "//ASSIGN\n");
 
-    //adding state condition, since assignment
-    //takes only one cycle.
+    std::pair<State *, Condition *> n;
+
+    //Create initial state and corresponding condition
     State *s = NULL;
     s = new State(ACT_CHP_ASSIGN, 0, sm);
     sm->SetFirstState(s);
+		Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
+		sm->AddCondition(zero_state_cond);
 
-    tmp = new Condition(s, sm->GetSN(), sm);
-		sm->AddCondition(tmp);
+		//Create initial condition when both parent 
+		//and child are in the right state
+		Comma *init_com = new Comma();
+		init_com->type = 0;
+		init_com->c.push_back(zero_state_cond);
+		if (pc) { init_com->c.push_back(pc);	}
+		Condition *init_cond = new Condition(init_com, sm->GetCCN(),sm);
+		sm->AddCondition(init_cond);
 
-		Comma *par_com = new Comma();
-		par_com->type = 0;
-		if (pc) { par_com->c.push_back(pc);	}
-		par_com->c.push_back(tmp);
-		Condition *par_cond = new Condition(par_com, sm->GetCCN(),sm);
-		sm->AddCondition(par_cond);
+		//Create second state aka exit state to wait
+		//until parent switches its state
+		State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(),sm);
+		Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(), sm);
+		sm->AddCondition(exit_s_cond);
+		sm->AddSize();
 
+		//Add exit state to the init state
+    n.first = exit_s;
+    n.second = init_cond;
+    s->AddNextState(n);
+
+		//Processing assigned variable as well as all other
+		//variables used in the assigned expression
     Data *d = NULL;
-    ActId *id = chp_lang->u.assign.id;
+    ActId *var_id = chp_lang->u.assign.id;
     Expr *e = chp_lang->u.assign.e;
 
     std::string sid;
     char buf[1024];
-    id->sPrint(buf, 1024);
+    var_id->sPrint(buf, 1024);
     sid = buf;
 
-    int wc = 0;
+    int var_w = 0;
     ihash_bucket *hb;
     act_booleanized_var_t *bv;
-    act_connection *idc = id->Canonical(scope);
-    hb = ihash_lookup(bnl->cH, (long)idc);
+    act_connection *var_con;
+		var_con = var_id->Canonical(scope);
+    hb = ihash_lookup(bnl->cH, (long)var_con);
     bv = (act_booleanized_var_t *)hb->v;
     if (bv->ischan == 1 || bv->isint == 1) {
-      wc = bv->width;
+      var_w = bv->width;
     } else {
-      wc = 1;
+      var_w = 1;
     }
 
     Variable *nv;
-    if (is_declared(tsm, idc) == 0) {
-      nv = new Variable(0, wc-1, 0, idc);
+    if (is_declared(tsm, var_con) == 0) {
+      nv = new Variable(0, var_w-1, 0, var_con);
       tsm->AddVar(nv);
     }
 
     std::vector<ActId *> var_col;
     collect_vars(e, var_col);
     for (auto v : var_col) {
-      act_connection *cur_con = v->Canonical(scope);
-      hb = ihash_lookup(bnl->cH, (long)cur_con);
+      act_connection *evar_con = v->Canonical(scope);
+      hb = ihash_lookup(bnl->cH, (long)evar_con);
       bv = (act_booleanized_var_t *)hb->v;
 
-      if (is_declared(tsm, cur_con) == 0) {
+			int decl_type = is_declared(tsm, evar_con);
+
+			int var_veri_type = decl_type == 0 ? 0 : 1;
+
+      if (decl_type == 0 || decl_type == 3) {
         if (bv->ischan == 1 || bv->isint == 1) {
-          nv = new Variable(0,bv->width-1, 0,cur_con);
+          nv = new Variable(var_veri_type,bv->width-1, 0,evar_con);
         } else {
-          nv = new Variable(0,0,0,cur_con);
-        }
-        tsm->AddVar(nv);
-      } else if (is_declared(tsm, cur_con) == 3) {
-        if (bv->ischan == 1 || bv->isint == 1) {
-          nv = new Variable(1,bv->width-1,0,cur_con);
-        } else {
-          nv = new Variable(1,0,0,cur_con);
+          nv = new Variable(var_veri_type,0,0,evar_con);
         }
         tsm->AddVar(nv);
       }
     }
 
-		State *ns = new State(ACT_CHP_SKIP, sm->GetSize(),sm);
-		sm->AddSize();
-
-		Condition *ns_cond = new Condition(ns, sm->GetSN(), sm);
-		sm->AddCondition(ns_cond);
-
-    std::pair<State *, Condition *> n;
-
-    n.first = ns;
-    n.second = par_cond;
-    s->AddNextState(n);
-    d = new Data(0, wc-1,0, proc, tsm, par_cond, NULL, id, e);
+    d = new Data(0, var_w-1,0, proc, tsm, init_cond, NULL, var_id, e);
     tsm->AddData(sid, d);
 
+		//Return condition
    	if (pc) {
 			Comma *npar_com = new Comma();
 			npar_com->type = 2;
@@ -721,20 +725,19 @@ Condition *traverse_chp(Process *proc,
 			Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
 			n.first = s;
 			n.second = npar_cond;
-			ns->AddNextState(n);
+			exit_s->AddNextState(n);
 			sm->AddCondition(npar_cond);
+		}
 
-			Comma *compl_com = new Comma();
-			compl_com->type = 1;
-			compl_com->c.push_back(par_cond);
-			compl_com->c.push_back(ns_cond);
-			Condition *compl_cond = new Condition(compl_com, sm->GetSN(), sm);
-			sm->AddCondition(compl_cond);
+		//Termination condition
+		Comma *term_com = new Comma();
+		term_com->type = 1;
+		term_com->c.push_back(init_cond);
+		term_com->c.push_back(exit_s_cond);
+		Condition *term_cond = new Condition(term_com, sm->GetSN(), sm);
+		sm->AddCondition(term_cond);
 
-      return compl_cond;
-    }
-    
-		return NULL;
+    return term_cond;
 
     break;
   }
@@ -853,15 +856,17 @@ Condition *traverse_chp(Process *proc,
 
 		//Return to initial state condition is when parent
 		//machine leaves current state
-		Comma *npar_com = new Comma();
-		npar_com->type = 2;
-		npar_com->c.push_back(pc);
-		Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
-		sm->AddCondition(npar_cond);
-
-		n.first = s;
-		n.second = npar_cond;
-		exit_s->AddNextState(n);
+		if (pc) {
+			Comma *npar_com = new Comma();
+			npar_com->type = 2;
+			npar_com->c.push_back(pc);
+			Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
+			sm->AddCondition(npar_cond);
+    	
+			n.first = s;
+			n.second = npar_cond;
+			exit_s->AddNextState(n);
+		}
 
 		//Terminate condition is when recv machine is in
 		//the exit state or when communication completion
@@ -987,15 +992,17 @@ Condition *traverse_chp(Process *proc,
 
 		//Return to initial state condition is when parent
 		//machine leaves current state
-		Comma *npar_com = new Comma();
-		npar_com->type = 2;
-		npar_com->c.push_back(pc);
-		Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
-		sm->AddCondition(npar_cond);
-
-		n.first = s;
-		n.second = npar_cond;
-		exit_s->AddNextState(n);
+		if (pc) {
+			Comma *npar_com = new Comma();
+			npar_com->type = 2;
+			npar_com->c.push_back(pc);
+			Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
+			sm->AddCondition(npar_cond);
+    	
+			n.first = s;
+			n.second = npar_cond;
+			exit_s->AddNextState(n);
+		}
 
 		//Terminate condition is when recv machine is in
 		//the exit state or when communication completion
