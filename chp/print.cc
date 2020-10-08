@@ -280,7 +280,7 @@ void StateMachine::PrintVerilog() {
 		i->PrintVerilog();
 	}
 
-  if (p) {
+  if (!par) {
     fprintf(stdout, "\n\nendmodule\n\n");
   }
  

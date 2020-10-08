@@ -13,29 +13,7 @@ static ActBooleanizePass *BOOL = NULL;
 bool is_simple(int type) {
   if (type == ACT_CHP_COMMA) {
     return true;
-  } else if (type == ACT_CHP_SEMI) {
-    return false;
-  } else if (type == ACT_CHP_SELECT) {
-    return false;
-  } else if (type == ACT_CHP_SELECT_NONDET) {
-    return false;
-  } else if (type == ACT_CHP_LOOP) {
-    return false;
-  } else if (type == ACT_CHP_DOLOOP) {
-    return false;
-  } else if (type == ACT_CHP_SKIP) {
-    return true;
-  } else if (type == ACT_CHP_ASSIGN) {
-    return true;
-  } else if (type == ACT_CHP_SEND) {
-    return true;
-  } else if (type == ACT_CHP_RECV) {
-    return true;
-  } else if (type == ACT_CHP_FUNC) {
-    return false;
-  } else if (type == ACT_CHP_SEMILOOP) {
-    return false;
-  } else if (type == ACT_CHP_COMMALOOP) {
+  } else {
     return false;
   }
 }
@@ -172,7 +150,7 @@ Condition *traverse_chp(Process *proc,
       //to the termination vector
       if (tmp) {
         vc.push_back(tmp);
-        sm->AddCondition(tmp);
+  //      sm->AddCondition(tmp);
       }
 
     }
@@ -563,7 +541,7 @@ Condition *traverse_chp(Process *proc,
 				} else {
 	        child_cond = new Condition(ss, sm->GetSN(), sm);
 				}
-//        sm->AddCondition(child_cond);
+        sm->AddCondition(child_cond);
 
         //if statement is simple then no new sm
         //is needed otherwise create new child sm
@@ -594,7 +572,6 @@ Condition *traverse_chp(Process *proc,
           n.second = child_cond;
         }
         ss->AddNextState(n);
-        sm->AddCondition(child_cond);
       }
     }
 
@@ -659,15 +636,18 @@ Condition *traverse_chp(Process *proc,
     //adding state condition, since assignment
     //takes only one cycle.
     State *s = NULL;
-    if (sm->IsEmpty()) {
-      s = new State(ACT_CHP_ASSIGN, 0, sm);
-      sm->SetFirstState(s);
-    }
+    s = new State(ACT_CHP_ASSIGN, 0, sm);
+    sm->SetFirstState(s);
 
-    if (s) {
-      tmp = new Condition(s, sm->GetSN(), sm);
-    }
+    tmp = new Condition(s, sm->GetSN(), sm);
+		sm->AddCondition(tmp);
 
+		Comma *par_com = new Comma();
+		par_com->type = 0;
+		if (pc) { par_com->c.push_back(pc);	}
+		par_com->c.push_back(tmp);
+		Condition *par_cond = new Condition(par_com, sm->GetCCN(),sm);
+		sm->AddCondition(par_cond);
 
     Data *d = NULL;
     ActId *id = chp_lang->u.assign.id;
@@ -720,131 +700,180 @@ Condition *traverse_chp(Process *proc,
       }
     }
 
+		State *ns = new State(ACT_CHP_SKIP, sm->GetSize(),sm);
+		sm->AddSize();
+
+		Condition *ns_cond = new Condition(ns, sm->GetSN(), sm);
+		sm->AddCondition(ns_cond);
+
     std::pair<State *, Condition *> n;
 
-    if (!pc) {
-      n.first = s;
-      n.second = tmp;
-      s->AddNextState(n);
-      d = new Data(0, wc-1,0, proc, tsm, tmp, NULL, id, e);
-      tsm->AddData(sid, d);
-      return tmp;
-    } else if (pc) {
-      d = new Data(0, wc-1, 0, proc, tsm, pc, NULL, id, e);
-      tsm->AddData(sid, d);
-      return NULL;
+    n.first = ns;
+    n.second = par_cond;
+    s->AddNextState(n);
+    d = new Data(0, wc-1,0, proc, tsm, par_cond, NULL, id, e);
+    tsm->AddData(sid, d);
+
+   	if (pc) {
+			Comma *npar_com = new Comma();
+			npar_com->type = 2;
+			npar_com->c.push_back(pc);
+			Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
+			n.first = s;
+			n.second = npar_cond;
+			ns->AddNextState(n);
+			sm->AddCondition(npar_cond);
+
+			Comma *compl_com = new Comma();
+			compl_com->type = 1;
+			compl_com->c.push_back(par_cond);
+			compl_com->c.push_back(ns_cond);
+			Condition *compl_cond = new Condition(compl_com, sm->GetSN(), sm);
+			sm->AddCondition(compl_cond);
+
+      return compl_cond;
     }
+    
+		return NULL;
 
     break;
   }
   case ACT_CHP_SEND: {
 
     fprintf(stdout, "//SEND\n");
+    
+		std::pair<State *, Condition *> n;
 
-    //adding communacation completion condition
+		//Create initial state and corresponding condition
     State *s = NULL;
-    if (sm->IsEmpty()) {
-      s = new State(ACT_CHP_SEND, 0, sm);
-      sm->SetFirstState(s);
-    }
+    s = new State(ACT_CHP_SEND, 0, sm);
+    sm->SetFirstState(s);
+		Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
+		sm->AddCondition(zero_state_cond);
 
-    ActId *id;
-    id = chp_lang->u.comm.chan->Canonical(scope)->toid();
-    tmp = new Condition(id, sm->GetCN(), sm);
+		//Create communication completion condition
+    ActId *chan_id;
+    chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
+		Condition *commu_compl;
+    commu_compl = new Condition(chan_id, sm->GetCN(), sm);
+		sm->AddCondition(commu_compl);
 
-    std::pair<State *, Condition *> n;
-    Condition *par_con = NULL;
+		//Create initial condition when both parent 
+		//and child are in the right state
+    Comma *init_com = new Comma;
+    init_com->type = 0;
+		init_com->c.push_back(zero_state_cond);
+    if (pc) { init_com->c.push_back(pc); }
+    Condition *init_cond = new Condition(init_com, sm->GetCCN(), sm);
+		sm->AddCondition(init_cond);
 
-    if (!pc) {
-      n.first = s;
-      n.second = tmp;
-      s->AddNextState(n);
-    } else {
-      Comma *par_com = new Comma;
-      par_com->type = 0;
-      par_com->c.push_back(tmp);
-      par_com->c.push_back(pc);
-      par_con = new Condition(par_com, sm->GetCCN(), sm);
-    }
+		//Create initial switching condition when
+		//both parent and child are in the right state
+		//and communication complete
+    Comma *exit_com = new Comma;
+    exit_com->type = 0;
+    exit_com->c.push_back(commu_compl);
+		exit_com->c.push_back(init_cond);
+    Condition *exit_cond;
+    exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
+		sm->AddCondition(exit_cond);
 
+		//Create second state aka exit state to wait
+		//until parent switches its state
+		State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+		Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(), sm);
+		sm->AddCondition(exit_s_cond);
+		sm->AddSize();
+
+		//Add exit state to the init state
+    n.first = exit_s;
+    n.second = exit_cond;
+    s->AddNextState(n);
+
+		//Processing channel by finding its direction
+		//and bitwidth in the booleanize data structure
+		//as well as declaring all undeclared variables 
+		//used in the channel send list
     Data *d = NULL;
-    act_connection *ccon;
-    ccon = id->Canonical(scope);
+    act_connection *chan_con;
+    chan_con = chan_id->Canonical(scope);
+
     std::string sid;
     char buf[1024];
-    id->sPrint(buf,1024);
+    chan_id->sPrint(buf,1024);
     sid = buf;
 
-    int wc = 0;
-
-    std::vector<ActId *> var_col; //collection of variables from
-                                  //the send expression
-
+    int chan_w = 0;
     ihash_bucket_t *hb;
     act_booleanized_var_t *bv;
-    hb = ihash_lookup(bnl->cH, (long)ccon);
+    hb = ihash_lookup(bnl->cH, (long)chan_con);
     bv = (act_booleanized_var_t *)hb->v;
-    wc = bv->width;
+    chan_w = bv->width;
 
-		if (is_declared(tsm, ccon) == 3) {
-			Variable *rv = new Variable(0, wc-1, 1, ccon);
+		if (is_declared(tsm, chan_con) == 3) {
+			Variable *rv = new Variable(0, chan_w-1, 1, chan_con);
 			tsm->AddVar(rv);
 		}
 
-
+    std::vector<ActId *> var_col;
     l = chp_lang->u.comm.rhs;
     for (li = list_first(l); li; li = list_next(li)) {
 
       Expr *vex = NULL;
       vex = (Expr *)list_value(li);
       collect_vars(vex, var_col);
+
       for (auto v : var_col) {
-        act_connection *cur_con = v->Canonical(scope);
-        hb = ihash_lookup(bnl->cH, (long)cur_con);
+
+        act_connection *var_con = v->Canonical(scope);
+        hb = ihash_lookup(bnl->cH, (long)var_con);
         bv = (act_booleanized_var_t *)hb->v;
+
+				int decl_type = is_declared(tsm,var_con);
+				int var_veri_type = decl_type == 0 ? 1 : 0;
+
         Variable *nv;
-        if (is_declared(tsm,cur_con) == 0) {
-          if (bv->isint == 1 || bv->ischan == 1) {
-            nv = new Variable(0, bv->width-1, 0, cur_con);
-          } else {
-            nv = new Variable(0, 0, 0, cur_con);
-          }
-          tsm->AddVar(nv);
-        } else if (is_declared(tsm, cur_con) == 4) {
-          if (bv->isint == 1 || bv->ischan == 1) {
-            nv = new Variable(1, bv->width-1, 0, cur_con);
-          } else {
-            nv = new Variable(1, 0, 0, cur_con);
-          }
-          tsm->AddVar(nv);
-        } else if (is_declared(tsm, cur_con) == 3) {
-					fprintf(stdout, "WHAAAAAAAT?!\n");
-					exit(1);
-      	}
+				if (decl_type == 0 || decl_type == 4) {
+        	if (bv->isint == 1 || bv->ischan == 1) {
+        	  nv = new Variable(var_veri_type, bv->width-1, 0, var_con);
+        	} else {
+        	  nv = new Variable(var_veri_type, 0, 0, var_con);
+        	}
+        	tsm->AddVar(nv);
+				}
       }
-			
-			if (var_col.size() > 0) {
-      	ActId *main_var;
-      	main_var = var_col[0];
-      	act_connection *main_con;
-      	main_con = main_var->Canonical(scope);
-      	hb = ihash_lookup(bnl->cH, (long)main_con);
-      	bv = (act_booleanized_var_t *) hb->v;
-			}
-
-      if (!pc) {
-        d = new Data (2, bv->width-1, 0, proc, tsm, tmp, tmp, id, vex);
-      } else {
-        d = new Data (2, bv->width-1, 0, proc, tsm, par_con, pc, id, vex);
-      }
-
+		
+      d = new Data (2, bv->width-1, 0, proc, tsm, exit_cond, 
+																				init_cond, chan_id, vex);
       tsm->AddData(sid, d);
 
       var_col.clear();
 
     }
 
-    return tmp;
+		//Return to initial state condition is when parent
+		//machine leaves current state
+		Comma *npar_com = new Comma();
+		npar_com->type = 2;
+		npar_com->c.push_back(pc);
+		Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
+		sm->AddCondition(npar_cond);
+
+		n.first = s;
+		n.second = npar_cond;
+		exit_s->AddNextState(n);
+
+		//Terminate condition is when recv machine is in
+		//the exit state or when communication completion
+		//is actually happening i.e. hand shake is valid
+		Comma *term_com = new Comma();
+		term_com->type = 1;
+		term_com->c.push_back(commu_compl);
+		term_com->c.push_back(exit_s_cond);
+		Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+		sm->AddCondition(term_cond);
+
+    return term_cond;
 
     break;
   }
@@ -852,97 +881,133 @@ Condition *traverse_chp(Process *proc,
 
     fprintf(stdout, "//RECV\n");
 
-    //adding communacation completion condition
-    //TODO: recv of a list of vars is not handeled
-    State *s = NULL;
-    if (sm->IsEmpty()) {
-      s = new State(ACT_CHP_RECV, 0, sm);
-      sm->SetFirstState(s);
-    }
-
-    ActId *id;
-    id = chp_lang->u.comm.chan->Canonical(scope)->toid();
-    tmp = new Condition(id, sm->GetCN(), sm);
-
     std::pair<State *, Condition *> n;
-    Condition *par_con = NULL;
 
-    if (!pc) {
-      n.first = s;
-      n.second = tmp;
-      s->AddNextState(n);
-    } else {
-      Comma *par_com = new Comma;
-      par_com->type = 0;
-      par_com->c.push_back(tmp);
-      par_com->c.push_back(pc);
-      par_con = new Condition(par_com, sm->GetCCN(), sm);
-    }
+		//Create initial state and corresponding condition
+    State *s = NULL;
+    s = new State(ACT_CHP_RECV, 0, sm);
+    sm->SetFirstState(s);
+		Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
+		sm->AddCondition(zero_state_cond);
 
+		//Create communication completion condition
+    ActId *chan_id;
+    chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
+		Condition *commu_compl;
+    commu_compl = new Condition(chan_id, sm->GetCN(), sm);
+		sm->AddCondition(commu_compl);
+
+		//Create initial condition when both parent 
+		//and child are in the right state
+		Comma *init_com = new Comma;
+		init_com->type = 0;
+		init_com->c.push_back(zero_state_cond);
+    if (pc) { init_com->c.push_back(pc); }
+		Condition *init_cond = new Condition(init_com, sm->GetCCN(), sm);
+		sm->AddCondition(init_cond);
+
+		//Create initial switching condition when
+		//both parent and child are in the right state
+		//and communication complete
+    Comma *exit_com = new Comma;
+    exit_com->type = 0;
+    exit_com->c.push_back(commu_compl);
+		exit_com->c.push_back(init_cond);
+    Condition *exit_cond;
+    exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
+		sm->AddCondition(exit_cond);
+
+		//Create second state aka exit state to wait
+		//until parent switches its state
+		State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+		Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(), sm);
+		sm->AddCondition(exit_s_cond);
+		sm->AddSize();
+
+		//Add exit state to the init state
+    n.first = exit_s;
+    n.second = exit_cond;
+    s->AddNextState(n);
+
+		//Processing channel by finding its direction
+		//and bitwidth in the booleanize data structure
+		//as well as declaring all undeclared variables 
+		//used in the channel recv list
     Data *d = NULL;
-    act_connection *ccon;         //channel connection
-    ccon = id->Canonical(scope);  //canonical connection
-    int wc = 0;                   //channel total width
-    ihash_bucket_t *hb;
-    act_booleanized_var_t *bv; //booleanized channel
-    hb = ihash_lookup(bnl->cH, (long)ccon);
-    bv = (act_booleanized_var_t *)hb->v;
-    wc = bv->width;
+    act_connection *chan_con;
+    chan_con = chan_id->Canonical(scope);
 
-		if (is_declared(tsm, ccon) == 4) {
-			Variable *rv = new Variable(1, wc-1, 1, ccon);
+    int chan_w = 0;
+    ihash_bucket_t *hb;
+    act_booleanized_var_t *bv;
+    hb = ihash_lookup(bnl->cH, (long)chan_con);
+    bv = (act_booleanized_var_t *)hb->v;
+    chan_w = bv->width;
+
+		if (is_declared(tsm, chan_con) == 4) {
+			Variable *rv = new Variable(1, chan_w-1, 1, chan_con);
 			tsm->AddVar(rv);
 		}
 
-    std::tuple<int, int, std::string> key;
- 
     l = chp_lang->u.comm.rhs;
     for (li = list_first(l); li; li = list_next(li)) {
 
-      ActId *vid = NULL;
-      act_connection *vcon = NULL;
-      vid = (ActId *)list_value(li);
-      vcon = vid->Canonical(scope);
+      ActId *var_id = NULL;
+      act_connection *var_con = NULL;
+      var_id = (ActId *)list_value(li);
+      var_con = var_id->Canonical(scope);
 
-      hb = ihash_lookup(bnl->cH, (long)vcon);
+      hb = ihash_lookup(bnl->cH, (long)var_con);
       act_booleanized_var_t *bv;
       bv = (act_booleanized_var_t *)hb->v;
 
+			int decl_type = is_declared(tsm,var_con);
+
       Variable *nv;
-      if (is_declared(tsm, vcon) == 0) {
-        if (bv->isint) {
-          nv = new Variable(0, bv->width-1, 0, vcon);
-        } else {
-          nv = new Variable(0, 0, 0, vcon);
-        }
-        tsm->AddVar(nv);
-      } else if (is_declared(tsm, vcon) == 3) {
-        if (bv->isint) {
-          nv = new Variable(0, bv->width-1, 0, vcon);
-        } else {
-          nv = new Variable(0, 0, 0, vcon);
-        }
-        tsm->AddVar(nv);
-      } else if (is_declared(tsm, vcon) == 4) {
-				fprintf(stdout, "WHAAAAAAAT?!\n");
-				exit(1);
-      }
+			if (decl_type == 0 || decl_type == 3) {
+      	if (bv->isint) {
+      	  nv = new Variable(0, bv->width-1, 0, var_con);
+      	} else {
+      	  nv = new Variable(0, 0, 0, var_con);
+      	}
+      	tsm->AddVar(nv);
+			}
 
       std::string sid;
       char buf[1024];
-      vid->sPrint(buf,1024);
+      var_id->sPrint(buf,1024);
       sid = buf;
 
-      if (!pc) {
-        d = new Data (1, bv->width-1, 0, proc, tsm, tmp, tmp, vid, id);
-      } else {
-        d = new Data (1, bv->width-1, 0, proc, tsm, par_con, pc, vid, id);
-      }
-
+			//Add data type as receive is basically assignment
+			//to the variable
+      d = new Data (1, bv->width-1, 0, proc, tsm, exit_cond, 
+																		init_cond, var_id, chan_id);
       tsm->AddData(sid, d);
     }
 
-    return tmp;
+		//Return to initial state condition is when parent
+		//machine leaves current state
+		Comma *npar_com = new Comma();
+		npar_com->type = 2;
+		npar_com->c.push_back(pc);
+		Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
+		sm->AddCondition(npar_cond);
+
+		n.first = s;
+		n.second = npar_cond;
+		exit_s->AddNextState(n);
+
+		//Terminate condition is when recv machine is in
+		//the exit state or when communication completion
+		//is actually happening i.e. hand shake is valid
+		Comma *term_com = new Comma();
+		term_com->type = 1;
+		term_com->c.push_back(commu_compl);
+		term_com->c.push_back(exit_s_cond);
+		Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+		sm->AddCondition(term_cond);
+
+    return term_cond;
 
     break;
   }
@@ -1016,7 +1081,7 @@ void map_instances(CHPProject *cp){
 void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 
 	ActInstiter i(cs);
-
+	
 	StateMachineInst *smi;
 	
 	int iport = 0;
@@ -1025,39 +1090,39 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 		ValueIdx *vx = *i;
 		if (TypeFactory::isProcessType(vx->t)) {
 			if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
-        continue;
+				continue;
 			}
-
-      act_boolean_netlist_t *sub;
-      sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
-
-      int ports_exist = 0;
-      for (int j = 0; j < A_LEN(sub->chpports); j++) {
-        if (sub->chpports[j].omit == 0) {
-          ports_exist = 1;
-          break;
-        }
-      }
+			
+			act_boolean_netlist_t *sub;
+			sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
+			
+			int ports_exist = 0;
+			for (int j = 0; j < A_LEN(sub->chpports); j++) {
+				if (sub->chpports[j].omit == 0) {
+					ports_exist = 1;
+					break;
+				}
+			}
 			if (ports_exist == 1) {
 				if (vx->t->arrayInfo()) {
-          Arraystep *as = vx->t->arrayInfo()->stepper();
-          while (!as->isend()) {
+					Arraystep *as = vx->t->arrayInfo()->stepper();
+					while (!as->isend()) {
 						Process *p = dynamic_cast<Process *>(vx->t->BaseType());
 						char *ar = as->string();
 						std::vector<Port *> ports;
 						for (auto j = 0; j < A_LEN(sub->chpports); j++){
 							if (sub->chpports[j].omit) { continue; }
 							act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-
+							
 							ihash_bucket *hb;
 							hb = ihash_lookup(bnl->cH, (long)c);
 							act_booleanized_var_t *bv;
 							bv = (act_booleanized_var_t *)hb->v;
-
+							
 							int dir = sub->chpports[j].input;
 							int width = bv->width;
 							int ischan = bv->ischan;
-
+							
 							Port *ip = new Port(dir,width,ischan,c);
 							ip->SetInst();
 							ports.push_back(ip);
@@ -1074,16 +1139,16 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 					for (auto j = 0; j < A_LEN(sub->chpports); j++){
 						if (sub->chpports[j].omit) { continue; }
 						act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-
+						
 						ihash_bucket *hb;
 						hb = ihash_lookup(bnl->cH, (long)c);
 						act_booleanized_var_t *bv;
 						bv = (act_booleanized_var_t *)hb->v;
-
+						
 						int dir = sub->chpports[j].input;
 						int width = bv->width;
 						int ischan = bv->ischan;
-
+						
 						Port *ip = new Port(dir,width,ischan,c);
 						ip->SetInst();
 						ports.push_back(ip);
