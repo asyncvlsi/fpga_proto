@@ -433,65 +433,65 @@ void State::PrintVerilog(int p) {
  *  Condition Class
  */
 
-void PrintExpression(Expr *e) {
+void PrintExpression(Expr *e, StateMachine *scope) {
   switch (e->type) {
     case (E_AND):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " & ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_OR):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " | ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_NOT):
       fprintf(stdout, " ~");
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       break;
     case (E_PLUS):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " + ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_MINUS):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " - ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_MULT):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " * ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_DIV):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " / ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_MOD):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " % ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_LSL):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " << ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_LSR):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " >> ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_ASR):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " >>> ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_UMINUS):
       fprintf(stdout, " -");
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       break;
     case (E_INT):
       fprintf(stdout, "%i", e->u.v);
@@ -503,11 +503,11 @@ void PrintExpression(Expr *e) {
       id->Print(stdout);
       break;
     case (E_QUERY):
-			PrintExpression(e->u.e.l);
+			PrintExpression(e->u.e.l, scope);
 			fprintf(stdout, " ? ");
-			PrintExpression(e->u.e.r->u.e.l);
+			PrintExpression(e->u.e.r->u.e.l, scope);
 			fprintf(stdout, " : ");
-			PrintExpression(e->u.e.r->u.e.r);
+			PrintExpression(e->u.e.r->u.e.r, scope);
       break;
     case (E_LPAR):
 			fprintf(stdout, "LPAR\n");
@@ -516,39 +516,39 @@ void PrintExpression(Expr *e) {
 			fprintf(stdout, "RPAR\n");
       break;
     case (E_XOR):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " ^ ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_LT):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " < ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_GT):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " > ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_LE):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " <=");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_GE):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " >= ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_EQ):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " == ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_NE):
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " != ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_TRUE):
       fprintf(stdout, " 1'b1 ");
@@ -560,18 +560,30 @@ void PrintExpression(Expr *e) {
       fprintf(stdout, " : ");
       break;
     case (E_PROBE):
+			Scope *act_scope;
+			act_scope = scope->GetProc()->CurScope();
 			id = (ActId *)e->u.e.l;
+			act_connection *cc;
+			cc = id->Canonical(act_scope);
+			StateMachine *tmp;
+			tmp = scope->GetPar();
+			while (tmp->GetPar()) {tmp = tmp->GetPar(); }
+			fprintf(stdout, "\\");
 			id->Print(stdout);
-			fprintf(stdout,"_valid");
+			if (tmp->IsPort(cc) == 1) {
+				fprintf(stdout,"_ready");
+			} else if (tmp->IsPort(cc) == 2){
+				fprintf(stdout,"_valid");
+			}
       break;
     case (E_COMMA):
       fprintf(stdout, "COMMA");
       break;
     case (E_CONCAT):
       fprintf(stdout, "CONCAT");
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       fprintf(stdout, " ");
-      PrintExpression(e->u.e.r);
+      PrintExpression(e->u.e.r, scope);
       break;
     case (E_BITFIELD):
 			unsigned int l;
@@ -590,7 +602,7 @@ void PrintExpression(Expr *e) {
       break;
     case (E_COMPLEMENT):
       fprintf(stdout, " ~");
-      PrintExpression(e->u.e.l);
+      PrintExpression(e->u.e.l, scope);
       break;
     case (E_REAL):
       fprintf(stdout, "%i", e->u.v);
@@ -615,7 +627,7 @@ void PrintExpression(Expr *e) {
 }
 
 void Condition::PrintExpr(Expr *e) {
-  PrintExpression(e);
+  PrintExpression(e, scope);
 }
 
 void Condition::PrintScope(StateMachine *sc, int f = 0){
@@ -840,7 +852,7 @@ void Data::PrintVerilogAssignment() {
   if (type == 0) {
     id->Print(stdout);
     fprintf(stdout, " <= ");
-    PrintExpression(u.assign.e);
+    PrintExpression(u.assign.e, scope);
     fprintf(stdout, " ;\n");
   } else if (type == 1) {
     id->Print(stdout);
@@ -850,7 +862,7 @@ void Data::PrintVerilogAssignment() {
   } else if (type == 2) {
     id->Print(stdout);
     fprintf(stdout, " <= ");
-    PrintExpression(u.send.se);
+    PrintExpression(u.send.se, scope);
     fprintf(stdout, " ;\n");
   }
  

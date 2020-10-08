@@ -163,6 +163,7 @@ Condition *traverse_chp(Process *proc,
         StateMachine *csm = new StateMachine();
         csm->SetNumber(sm->GetKids());
         csm->SetParent(sm);
+				csm->SetProcess(sm->GetProc());
         sm->AddKid(csm);
         tmp = traverse_chp(proc, cl, csm, tsm , child_cond);
       }
@@ -278,6 +279,7 @@ Condition *traverse_chp(Process *proc,
           StateMachine *csm = new StateMachine();
           csm->SetNumber(sm->GetKids());
           csm->SetParent(sm);
+					csm->SetProcess(sm->GetProc());
           sm->AddKid(csm);
           tmp = traverse_chp(proc, cl, csm, tsm, child_cond);
           next_com->c.push_back(tmp);
@@ -410,6 +412,7 @@ Condition *traverse_chp(Process *proc,
             StateMachine *csm = new StateMachine();
             csm->SetNumber(sm->GetKids());
             csm->SetParent(sm);
+						csm->SetProcess(sm->GetProc());
             sm->AddKid(csm);
             tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
           }
@@ -570,6 +573,7 @@ Condition *traverse_chp(Process *proc,
           StateMachine *csm = new StateMachine();
           csm->SetNumber(sm->GetKids());
           csm->SetParent(sm);
+					csm->SetProcess(sm->GetProc());
           sm->AddKid(csm);
           tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
         }
