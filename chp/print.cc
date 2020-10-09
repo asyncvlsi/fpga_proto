@@ -190,7 +190,7 @@ void StateMachine::PrintVerilog() {
     fprintf(stdout, "\n");
   }
 
-  fprintf(stdout, "/*\n\tState Machine #%i\n*/\n\n", number);
+  fprintf(stdout, "/*\n\tState Machine type:%i\n*/\n\n", top->GetType());
 
   for (auto cc : guard_condition) {
     fprintf(stdout, "assign ");
