@@ -86,7 +86,6 @@ Condition *traverse_chp(Process *proc,
 
   Condition *tmp;
 
-	fprintf(stdout, "TYPE: %i\n", chp_lang->type);
 
   switch (chp_lang->type) {
 
@@ -691,7 +690,6 @@ Condition *traverse_chp(Process *proc,
 					int dim_size = dv->a->range_size(i);
 					nv->AddDimension(dim_size-1);
 				}
-				nv->PrintVerilog();
 				tsm->AddVar(nv);
 			}
 		} else {
@@ -716,7 +714,6 @@ Condition *traverse_chp(Process *proc,
 						nv->AddDimension(dim_size-1);
 					}
 				}
-				nv->PrintVerilog();
   			tsm->AddVar(nv);
   		}
 		}
@@ -739,7 +736,6 @@ Condition *traverse_chp(Process *proc,
 						nv->AddDimension(dim_size-1);
 					}
 				}
-				nv->PrintVerilog();
 				tsm->AddVar(nv);
 			} else {
 	      evar_con = v->Canonical(scope);
@@ -756,7 +752,7 @@ Condition *traverse_chp(Process *proc,
 						var_w = 1;
 					}
 					nv = new Variable (var_veri_type, 0, evar_vx);
-					nv->AddDimension(var_w);
+					nv->AddDimension(var_w-1);
 					if (v->arrayInfo()) {
 						Array *var_a = v->arrayInfo();
 						InstType *it = scope->FullLookup(v, &var_a);
@@ -766,13 +762,12 @@ Condition *traverse_chp(Process *proc,
 							nv->AddDimension(dim_size-1);
 						}
 					}
-					nv->PrintVerilog();
 					tsm->AddVar(nv);
 				}
 			}
     }
 
-    d = new Data(0, 0,0, proc, tsm, init_cond, NULL, var_id, e);
+    d = new Data(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
     tsm->AddData(var_id->rootVx(scope), d);
 
 		//Return condition
@@ -897,7 +892,6 @@ Condition *traverse_chp(Process *proc,
 							int dim_size = dv->a->range_size(i);
 							nv->AddDimension(dim_size-1);
 						}
-						nv->PrintVerilog();
 						tsm->AddVar(nv);
 					}
 				} else {
@@ -925,7 +919,6 @@ Condition *traverse_chp(Process *proc,
 								nv->AddDimension(dim_size);
 							}
 						}
-						nv->PrintVerilog();
 						tsm->AddVar(nv);
 					}
 				}
@@ -1043,8 +1036,6 @@ Condition *traverse_chp(Process *proc,
     l = chp_lang->u.comm.rhs;
     for (li = list_first(l); li; li = list_next(li)) {
 
-			fprintf(stdout, "WOW\n");
-
       ActId *var_id = NULL;
       act_connection *var_con = NULL;
       var_id = (ActId *)list_value(li);
@@ -1069,7 +1060,6 @@ Condition *traverse_chp(Process *proc,
 						int dim_size = dv->a->range_size(0);
 						nv->AddDimension(dim_size-1);
 					}
-					nv->PrintVerilog();
 					tsm->AddVar(nv);
 				}
 			} else {
@@ -1097,7 +1087,6 @@ Condition *traverse_chp(Process *proc,
 							nv->AddDimension(dim_size-1);
 						}
 					}
-					nv->PrintVerilog();
 					tsm->AddVar(nv);
 				}
 			}
