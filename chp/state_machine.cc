@@ -81,7 +81,7 @@ void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
 void StateMachine::AddVar(Variable *v_){ vars.push_back(v_); }
-void StateMachine::AddData(std::string &id, Data *dd) {data[id].push_back(dd);}
+void StateMachine::AddData(ValueIdx* id, Data *dd) {data[id].push_back(dd);}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
     commun_num++;

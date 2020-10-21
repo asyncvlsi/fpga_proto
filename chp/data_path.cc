@@ -130,9 +130,12 @@ Port::~Port() {}
 /*
  *  Variable Class
  */
+ValueIdx *Variable::GetId(){
+	return vx;
+}
 
-act_connection *Variable::GetCon() {
-  return id;
+void Variable::AddDimension(int d) {
+	dim.push_back(d);
 }
 
 int Variable::IsChan() {
@@ -141,17 +144,20 @@ int Variable::IsChan() {
 
 Variable::Variable() {
   type = 0;
-  width = 0;
 	ischan = 0;
-	id = NULL;
+	vx = NULL;
 }
 
-Variable::Variable(int type_, int width_, int ischan_, act_connection *id_) {
+Variable::Variable(int type_, int ischan_) {
   type = type_;
-  width = width_;
 	ischan = ischan_;
-  id = id_;
+	vx = NULL;
 }
 
+Variable::Variable(int type_, int ischan_, ValueIdx *vx_) {
+  type = type_;
+	ischan = ischan_;
+	vx = vx_;
+}
 
 }

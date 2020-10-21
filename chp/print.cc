@@ -68,7 +68,6 @@ void StateMachine::PrintPlain() {
 
   for (auto c : csm) {
     c->PrintPlain();
-    fprintf(stdout, "===============\n");
   }
 
   for (auto cc : guard_condition) {
@@ -190,7 +189,10 @@ void StateMachine::PrintVerilog() {
     fprintf(stdout, "\n");
   }
 
-  fprintf(stdout, "/*\n\tState Machine type:%i\n*/\n\n", top->GetType());
+  fprintf(stdout, "/*\n\tState Machine type:");
+	top->PrintType();
+  fprintf(stdout, "*/\n\n");
+	
 
   for (auto cc : guard_condition) {
     fprintf(stdout, "assign ");
@@ -238,7 +240,7 @@ void StateMachine::PrintVerilog() {
   for (auto id : data) {
     fprintf(stdout, "always @(posedge clock)\n");
     fprintf(stdout, "if (reset) begin\n\t\\");
-    fprintf(stdout, "%s", id.first.c_str());
+		fprintf(stdout, "%s", id.first->getName());
     fprintf(stdout, " <= 0;\n");
     fprintf(stdout, "end\n");
     for (auto dd : id.second) {
@@ -893,26 +895,28 @@ void Variable::PrintVerilog (){
   } else {
     fprintf(stdout, "wire\t");
   }
-  if (width > 0) {
-    fprintf(stdout, "[%i:0]\t", width);
-  }
+  fprintf(stdout, "[%i:0]\t", dim[0]);
+
 	fprintf(stdout, "\\");
-  id->toid()->Print(stdout);
+	fprintf(stdout, "%s ", vx->getName());
+	for (auto i = 1; i < dim.size(); i++) {
+    fprintf(stdout, "[%i:0]", dim[i]);
+	}
   fprintf(stdout, " ;\n");
 	if (ischan == 1) {
 		if (type == 0) {
 			fprintf(stdout, "reg\t\\");
-			id->toid()->Print(stdout);
+			fprintf(stdout, "%s", vx->getName());
 			fprintf(stdout, "_valid ;\n");
 			fprintf(stdout, "wire\t\\");
-			id->toid()->Print(stdout);
+			fprintf(stdout, "%s", vx->getName());
 			fprintf(stdout, "_ready ;\n");
 		} else {
 			fprintf(stdout, "wire\t\\");
-			id->toid()->Print(stdout);
+			fprintf(stdout, "%s", vx->getName());
 			fprintf(stdout, "_valid ;\n");
 			fprintf(stdout, "reg\t\\");
-			id->toid()->Print(stdout);
+			fprintf(stdout, "%s", vx->getName());
 			fprintf(stdout, "_ready ;\n");
 		}
 	}

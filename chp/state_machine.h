@@ -104,6 +104,7 @@ public:
   void PrintVerilog(int p = 1);
   void PrintVerilogName(int);
   bool isPrinted();
+  void PrintType();
 
 private:
 
@@ -124,7 +125,6 @@ private:
   unsigned int printed:1;
 
   void PrintParent(StateMachine *p, int);
-  void PrintType();
 };
 
 class StateMachineInst {
@@ -177,7 +177,7 @@ public:
   void AddCondition(Condition *c);
   void AddSize();
   void AddKid(StateMachine *sm);
-  void AddData(std::string&, Data *);
+  void AddData(ValueIdx*, Data *);
   void AddPort(Port *);
   void AddVar(Variable *);
 	void AddInst(StateMachineInst *);
@@ -218,7 +218,7 @@ private:
 
 	std::vector<StateMachineInst *> inst;
 
-  std::map<std::string, std::vector<Data *>> data;
+  std::map<ValueIdx*, std::vector<Data *>> data;
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;
@@ -369,8 +369,12 @@ class Variable {
 public:
 
   Variable();
-  Variable(int, int, int, act_connection *);
+  Variable(int, int);
+  Variable(int, int, ValueIdx *);
   
+	void AddDimension(int);
+
+	ValueIdx *GetId();
   act_connection *GetCon();
 
 	int IsChan();
@@ -380,9 +384,11 @@ public:
 private:
 
   int type;   //0 - reg, 1 - wire
-  int width;  //variable bit-width
 	int ischan; //0 - no, 1 - yes
 
+	std::vector<int> dim; //vector of array dimentions width
+
+	ValueIdx *vx;
   act_connection *id;  //name
 
 };
