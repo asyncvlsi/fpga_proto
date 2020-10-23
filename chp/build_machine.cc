@@ -696,11 +696,7 @@ Condition *traverse_chp(Process *proc,
 			var_con = var_id->Canonical(scope);
   		hb = ihash_lookup(bnl->cH, (long)var_con);
   		bv = (act_booleanized_var_t *)hb->v;
-  		if (bv->ischan == 1 || bv->isint == 1) {
-  			var_w = bv->width;
-  		} else {
-  			var_w = 1;
-  		}
+ 			var_w = bv->width;
 
   		if (is_declared(tsm, var_vx) == 0) {
   		  nv = new Variable(0, 0, var_vx);
@@ -746,11 +742,7 @@ Condition *traverse_chp(Process *proc,
 				int var_veri_type = decl_type == 0 ? 0 : 1;
 				
 				if (decl_type == 0 || decl_type == 3) {
-					if (bv->ischan == 1 || bv->isint == 1) {
-						var_w = bv->width;
-					} else {
-						var_w = 1;
-					}
+					var_w = bv->width;
 					nv = new Variable (var_veri_type, 0, evar_vx);
 					nv->AddDimension(var_w-1);
 					if (v->arrayInfo()) {
@@ -903,11 +895,7 @@ Condition *traverse_chp(Process *proc,
 					int var_veri_type = decl_type == 0 ? 1 : 0;
         
 					if (decl_type == 0 || decl_type == 4) {
-						if (bv->isint == 1 || bv->ischan == 1) {
-							var_w = bv->width;
-						} else {
-							var_w = 1;
-						}
+						var_w = bv->width;
 						nv = new Variable(var_veri_type, 0, evar_vx);
 						nv->AddDimension(var_w-1);
 						if (v->arrayInfo()) {
@@ -1071,11 +1059,7 @@ Condition *traverse_chp(Process *proc,
 				int var_veri_type = decl_type == 0 ? 0 : 1;
 
 				if (decl_type == 0 || decl_type == 3) {
-      		if (bv->isint) {
-      		 	var_w = bv->width;
-      		} else {
-						var_w = 1;
-      		}
+      		var_w = bv->width;
       		nv = new Variable(0, var_veri_type, var_vx);
 					nv->AddDimension(var_w-1);
 					if (var_id->arrayInfo()) {
