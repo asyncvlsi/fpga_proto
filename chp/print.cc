@@ -28,7 +28,31 @@ std::string get_module_name (Process *p) {
 
 }
 
+std::string print_array_ref (ActId *id) {
 
+	char buf[1024];
+
+	id->sPrint(buf, 1024);
+
+	std::string ret_id;
+
+	int once = 0;
+
+	for (auto i = 0; i < 1024; i++) {
+		if (buf[i] == 0x5B && once == 0) {
+			ret_id += 0x20;
+			ret_id += buf[i];
+			once = 1;
+		} else if (buf[i] == 0x20) {
+			continue;
+		} else {
+			ret_id += buf[i];
+		}
+	}
+
+	return ret_id;
+
+}
 
 /*
  *  CHP Project Class
@@ -852,7 +876,8 @@ void Data::PrintVerilogAssignment() {
   if (printed) {return;}
   printed = 1;
   if (type == 0) {
-    id->Print(stdout);
+		std::string cid = print_array_ref(id);
+		fprintf(stdout, "%s", cid.c_str());
     fprintf(stdout, " <= ");
     PrintExpression(u.assign.e, scope);
     fprintf(stdout, " ;\n");
