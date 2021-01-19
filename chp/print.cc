@@ -16,8 +16,13 @@ std::string get_module_name (Process *p) {
 
   for (auto i = 0; i < len; i++) {
     if (mn[i] == 0x3c) {
+			buf += "_";
       continue;
     } else if (mn[i] == 0x3e) {
+			buf += "_";
+      continue;
+    } else if (mn[i] == 0x2c) {
+			buf += "_";
       continue;
     } else {
       buf += mn[i];
@@ -163,9 +168,11 @@ void StateMachine::PrintVerilogHeader() {
     fprintf(stdout, ");\n\n");
   }
 
-  PrintVerilogWires();
-  PrintVerilogVars();
-  PrintVerilogParameters();
+	if (top) {
+  	PrintVerilogWires();
+  	PrintVerilogVars();
+  	PrintVerilogParameters();
+	}
   fprintf(stdout, "\n");
 
 }
@@ -193,18 +200,20 @@ void StateMachine::PrintParent(StateMachine *p, int f = 0) {
 }
 
 void StateMachine::PrintVerilogParameters(){
-  fprintf(stdout, "reg [31:0] ");
-  top->PrintVerilogName(1);
-  fprintf(stdout, " = 0;\n");
-  for (auto i = 0; i < size; i++) {
-    fprintf(stdout, "localparam ");
-    top->PrintVerilogName(2);
-    fprintf(stdout, "_%i = %i;\n", i, i);
-  }
-  fprintf(stdout, "\n");
-  for (auto c : csm) {
-    c->PrintVerilogParameters();
-  }
+	if (top) {
+  	fprintf(stdout, "reg [31:0] ");
+  	top->PrintVerilogName(1);
+  	fprintf(stdout, " = 0;\n");
+  	for (auto i = 0; i < size; i++) {
+  	  fprintf(stdout, "localparam ");
+  	  top->PrintVerilogName(2);
+  	  fprintf(stdout, "_%i = %i;\n", i, i);
+  	}
+  	fprintf(stdout, "\n");
+  	for (auto c : csm) {
+  	  c->PrintVerilogParameters();
+  	}
+	}
 }
 
 void StateMachine::PrintVerilog() {
@@ -213,10 +222,13 @@ void StateMachine::PrintVerilog() {
     fprintf(stdout, "\n");
   }
 
-  fprintf(stdout, "/*\n\tState Machine type:");
-	top->PrintType();
-  fprintf(stdout, "*/\n\n");
-	
+	if (top) {
+	  fprintf(stdout, "/*\n\tState Machine type:");
+		top->PrintType();
+  	fprintf(stdout, "*/\n\n");
+	} else {
+		fprintf(stdout, "/*\tNO CHP BODY IN THE PROCESS\t*/\n");
+	}
 
   for (auto cc : guard_condition) {
     fprintf(stdout, "assign ");
@@ -240,21 +252,22 @@ void StateMachine::PrintVerilog() {
   }
   fprintf(stdout, "\n");
 
-  fprintf(stdout, "always @(posedge clock)\n");
-  fprintf(stdout, "if (reset)\n\t");
-  fprintf(stdout, "sm%i_", number);
-  if (par) {
-    PrintParent(par);
-  }
-  fprintf(stdout, "state <= ");
-  fprintf(stdout, "SM%i_", number);
-  if (par) {
-    PrintParent(par, 2);
-  }
-  fprintf(stdout, "STATE_0;\n");
-  
-  top->PrintVerilog();
-  PrintVerilogState(top->GetNextState());
+	if (top) {
+  	fprintf(stdout, "always @(posedge clock)\n");
+  	fprintf(stdout, "if (reset)\n\t");
+  	fprintf(stdout, "sm%i_", number);
+  	if (par) {
+  	  PrintParent(par);
+  	}
+  	fprintf(stdout, "state <= ");
+  	fprintf(stdout, "SM%i_", number);
+  	if (par) {
+  	  PrintParent(par, 2);
+  	}
+  	fprintf(stdout, "STATE_0;\n");
+	  top->PrintVerilog();
+	  PrintVerilogState(top->GetNextState());
+	}
 
   fprintf(stdout, "\n");
 
@@ -520,13 +533,12 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       PrintExpression(e->u.e.l, scope);
       break;
     case (E_INT):
-      fprintf(stdout, "%i", e->u.v);
+      fprintf(stdout, "32'd%u", e->u.v);
       break;
     case (E_VAR):
       ActId *id;
       id = (ActId *)e->u.e.l;
-			fprintf(stdout, "\\");
-      id->Print(stdout);
+			fprintf(stdout, "\\%s", print_array_ref(id).c_str());
       break;
     case (E_QUERY):
 			PrintExpression(e->u.e.l, scope);
@@ -606,18 +618,22 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       fprintf(stdout, "COMMA");
       break;
     case (E_CONCAT):
-      fprintf(stdout, "CONCAT");
       PrintExpression(e->u.e.l, scope);
-      fprintf(stdout, " ");
-      PrintExpression(e->u.e.r, scope);
+			if (e->u.e.r) {
+	      fprintf(stdout, " ,");
+  	    PrintExpression(e->u.e.r, scope);
+			} else {
+				fprintf(stdout, " }");
+			}
       break;
     case (E_BITFIELD):
 			unsigned int l;
 			unsigned int r;
 			l = (unsigned long) e->u.e.r->u.e.r;
 			r = (unsigned long) e->u.e.r->u.e.l;
+			fprintf(stdout, "\\");
 			((ActId *)e->u.e.l)->Print(stdout);
-      fprintf(stdout, "[");
+      fprintf(stdout, " [");
 			if (l!=r) {
 				fprintf(stdout, "%i:", l);
 				fprintf(stdout, "%i", r);
@@ -751,7 +767,7 @@ void Condition::PrintVerilog(int f){
         fatal_error("!!!\n");
     }
   } else if (f == 1) {
-     switch (type) {
+    switch (type) {
       case (0) :
         PrintScope(scope);
         fprintf(stdout, "commu_compl_%i = ", num);
@@ -778,30 +794,30 @@ void Condition::PrintVerilog(int f){
       case (3) :
         PrintScope(scope);
         fprintf(stdout, "cond_%i = ", num);
-      for (auto cc : u.c->c) {
-        if (u.c->type == 2) {
-          fprintf(stdout, "!");
-        }
-        PrintScope(cc->GetScope());
-        if (cc->GetType() == 0) {
-          fprintf(stdout, "commu_compl_%i", cc->GetNum());
-        } else if (cc->GetType() == 1) {
-          fprintf(stdout, "guard_%i", cc->GetNum());
-        } else if (cc->GetType() == 2) {
-          State *ss = cc->GetState();
-          sm = ss->GetPar();
-          fprintf(stdout, "state_cond_%i", cc->GetNum());
-        } else {
-          fprintf(stdout, "cond_%i", cc->GetNum());
-        }
-        if (cc != u.c->c[u.c->c.size()-1]) {
-          if (u.c->type != 1) {
-            fprintf(stdout," & ");
-          } else {
-            fprintf(stdout," | ");
-          }
-        }
-      }
+      	for (auto cc : u.c->c) {	
+      	  if (u.c->type == 2) {
+      	    fprintf(stdout, "!");
+      	  }
+      	  PrintScope(cc->GetScope());
+      	  if (cc->GetType() == 0) {
+      	    fprintf(stdout, "commu_compl_%i", cc->GetNum());
+      	  } else if (cc->GetType() == 1) {
+      	    fprintf(stdout, "guard_%i", cc->GetNum());
+      	  } else if (cc->GetType() == 2) {
+      	    State *ss = cc->GetState();
+      	    sm = ss->GetPar();
+      	    fprintf(stdout, "state_cond_%i", cc->GetNum());
+      	  } else {
+      	    fprintf(stdout, "cond_%i", cc->GetNum());
+      	  }
+      	  if (cc != u.c->c[u.c->c.size()-1]) {
+      	    if (u.c->type != 1) {
+      	      fprintf(stdout," & ");
+      	    } else {
+      	      fprintf(stdout," | ");
+      	    }
+					}
+      	}
         break;
       default :
         fatal_error("!!!\n");
@@ -879,6 +895,9 @@ void Data::PrintVerilogAssignment() {
 		std::string cid = print_array_ref(id);
 		fprintf(stdout, "%s", cid.c_str());
     fprintf(stdout, " <= ");
+		if (u.assign.e->type == 29) {
+			fprintf(stdout, "{");
+		}
     PrintExpression(u.assign.e, scope);
     fprintf(stdout, " ;\n");
   } else if (type == 1) {
@@ -897,7 +916,7 @@ void Data::PrintVerilogAssignment() {
 
 void Data::PrintVerilogCondition(){
   fprintf(stdout, "else if (");
-  cond->PrintVerilog(0);
+	cond->PrintVerilog(0);
   fprintf(stdout, ")");
 }
 
@@ -928,6 +947,7 @@ void Variable::PrintVerilog (){
     fprintf(stdout, "[%i:0]", dim[i]);
 	}
   fprintf(stdout, " ;\n");
+
 	if (ischan == 1) {
 		if (type == 0) {
 			fprintf(stdout, "reg\t\\");
