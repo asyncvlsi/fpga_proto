@@ -505,11 +505,175 @@ Condition *traverse_chp(Process *proc,
   }
   case ACT_CHP_SELECT_NONDET: {
 
+    std::pair<State *, Condition *> n;
+  	std::vector<Condition *> vc;
+    //Selection statement completion happens after completion of
+    //execution of one if the selction options. Thus in case of
+    //return state existance function returns ORed comma condition
+    //with options completion conditions.
+
+    //Create initial state (guard will be evaluated here)
+		//and corresponding state condition
+    State *s = NULL;
+    s = new State(ACT_CHP_SELECT, 0, sm);
+    sm->SetFirstState(s);
+		Condition *zero_s_cond = new Condition(s, sm->GetSN(), sm);
+		sm->AddCondition(zero_s_cond);
+
+    Condition *child_cond = NULL;
+		Condition *guard = NULL;
+    State *ss = NULL;
+
+		//Flag for cases when parametarized select turns out
+		//to be useless
+		//[ pbool(false) -> bla bla
+		//[]else -> skip
+		//] -> nothing going to happen
+		int empty_select = 0;
+
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-      Condition *g = new Condition(gg->g, sm->GetGN(), sm);
-      sm->AddCondition(g);
-      traverse_chp (proc, chp_lang->u.gc->s, sm, tsm, NULL);
-    }
+
+      if (gg->g) {
+        if (gg->s && gg->s->type != ACT_CHP_SKIP &&
+										 gg->s->type != ACT_CHP_FUNC) {
+					empty_select = 0;
+					break;
+        } else {
+					empty_select = 1;
+					continue;
+				}
+      } else {
+				empty_select = 1;
+				continue;
+			}
+		}	
+
+    //Process all selection options
+		if (empty_select == 0) {
+
+			Arbiter *arb = new Arbiter();
+
+    	for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
+    	
+    	  if (gg->g) {
+    	    if (gg->s && gg->s->type != ACT_CHP_SKIP
+										&& gg->s->type != ACT_CHP_FUNC) {
+    	      guard = new Condition(gg->g, sm->GetGN(), sm);
+    	      Condition *arb_guard = new Condition(gg->g, sm->GetGN(), sm, 1);
+    	      sm->AddCondition(arb_guard);
+						arb->AddElement(arb_guard);
+    	    } else {
+						continue;
+					}
+    	  } else {
+					continue;
+				}
+    	
+    	  if (gg->s) {
+    	    ss = new State(gg->s->type, sm->GetSize(), sm);
+    	    sm->AddSize();
+    	
+					Comma *guard_com = new Comma;
+					guard_com->type = 0;
+					guard_com->c.push_back(zero_s_cond);
+					if (pc) { guard_com->c.push_back(pc); }
+					guard_com->c.push_back(guard);
+					Condition *full_guard;
+					full_guard = new Condition(guard_com, sm->GetCCN(), sm);
+    	    n.first = ss;
+    	    n.second = full_guard;
+    	    s->AddNextState(n);
+					sm->AddCondition(full_guard);
+    	
+					if (pc) {
+						Comma *child_com = new Comma;
+						child_com->type = 0;
+						child_com->c.push_back(pc);
+						Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+						sm->AddCondition(tmp_cond);
+						child_com->c.push_back(tmp_cond);
+						child_cond = new Condition(child_com, sm->GetCCN(), sm);
+					} else {
+	  	      child_cond = new Condition(s, sm->GetSN(), sm);
+					}
+    	    sm->AddCondition(child_cond);
+    	
+    	    if (is_simple(gg->s->type)) {
+    	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+    	    } else {
+    	      StateMachine *csm = new StateMachine();
+    	      csm->SetNumber(sm->GetKids());
+    	      csm->SetParent(sm);
+						csm->SetProcess(sm->GetProc());
+    	      sm->AddKid(csm);
+    	      tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
+    	    }
+    	    if (tmp) {
+    	      vc.push_back(tmp);
+    	    } else {
+						vc.push_back(child_cond);
+					}
+    	  }
+    	}
+
+    	//Create new condition to switch to the exit state
+			//after execution completion
+    	Comma *exit_com = new Comma;
+    	exit_com->type = 1;
+    	exit_com->c = vc;
+    	Condition *exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
+    	sm->AddCondition(exit_cond);
+    	
+    	//Create exit state
+    	State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+			sm->AddSize();
+    	
+    	n.first = exit_s;
+    	n.second = exit_cond;
+    	ss->AddNextState(n);
+    	
+			Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(),sm);
+			sm->AddCondition(exit_s_cond);
+			vc.push_back(exit_s_cond);
+    	
+			//Create termination condition which is either
+			//statement completion or exit state
+    	Comma *term_com = new Comma;
+    	term_com->type = 1;
+    	term_com->c = vc;
+    	Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+    	sm->AddCondition(term_cond);
+    	
+			//Return to the initial state when parent is not in 
+			//the right state
+    	if (pc) {
+				Comma *npar_com = new Comma;
+				npar_com->type = 2;
+				npar_com->c.push_back(pc);
+				Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
+				sm->AddCondition(npar_cond);
+				n.first = s;
+				n.second = npar_cond;
+				exit_s->AddNextState(n);
+			}
+
+			sm->AddArb(arb);
+
+			return term_cond;
+
+		} else {
+
+			vc.push_back(zero_s_cond);
+    	Comma *term_com = new Comma;
+    	term_com->type = 0;
+    	term_com->c = vc;
+    	Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+    	sm->AddCondition(term_cond);
+
+    	return term_cond;
+
+		}
+
     break;
   }
   case ACT_CHP_LOOP: {

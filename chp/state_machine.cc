@@ -86,7 +86,7 @@ void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
     commun_num++;
     commu_condition.push_back(c);
-  } else if (c->GetType() == 1) {
+  } else if (c->GetType() == 1 || c->GetType() == 4) {
     guard_num++;
     guard_condition.push_back(c);
   } else if (c->GetType() == 2) {
@@ -97,6 +97,7 @@ void StateMachine::AddCondition(Condition *c) {
     comma_condition.push_back(c);
   }
 }
+void StateMachine::AddArb(Arbiter *a) { arb.push_back(a); }
 
 int StateMachine::GetNum(){ return number; }
 int StateMachine::GetSize() { return size; }
@@ -280,5 +281,22 @@ Condition::Condition(Comma *c_, int num_, StateMachine *sc) {
   u.c = c_;
   scope = sc;
 }
+
+Condition::Condition(Expr *e_, int num_, StateMachine *sc, int a) {
+  type = 4;
+  num = num_;
+  u.e = e_;
+  scope = sc;
+}
+
+/*
+ *	Arbiter Class
+ */
+void Arbiter::AddElement(Condition *c) {
+	a.push_back(c);
+}
+
+Arbiter::Arbiter(){}
+Arbiter::~Arbiter(){}
 
 }

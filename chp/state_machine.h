@@ -8,6 +8,7 @@ class Data;
 class Port;
 class Variable;
 
+class Arbiter;
 class Condition;
 class State;
 class StateMachine;
@@ -29,6 +30,7 @@ public:
   Condition();
   Condition(ActId *v_, int num_, StateMachine *sc);
   Condition(Expr *e_,  int num_, StateMachine *sc);
+  Condition(Expr *e_,  int num_, StateMachine *sc, int a);
   Condition(State *s_, int num_, StateMachine *sc);
   Condition(Comma *c_, int num_, StateMachine *sc);
   Condition(bool *con_,int num_, StateMachine *sc);
@@ -55,6 +57,7 @@ private:
             //1 - selection/loop guard
             //2 - statement completion (1 cycle operation)
             //3 - comma
+						//4 - arbitrated guard
 
   int num;  //condition number for each paticular type
 
@@ -181,6 +184,7 @@ public:
   void AddPort(Port *);
   void AddVar(Variable *);
 	void AddInst(StateMachineInst *);
+	void AddArb(Arbiter *a);
 
   int GetSize();
   int GetNum();
@@ -227,6 +231,8 @@ private:
   std::vector<Condition *> state_condition;
   std::vector<Condition *> commu_condition;
   std::vector<Condition *> comma_condition;
+
+	std::vector<Arbiter *> arb;
 
   void PrintPlainState(std::vector<std::pair<State *, Condition *>> s);
   void PrintVerilogState(std::vector<std::pair<State *, Condition *>> s);
@@ -390,6 +396,23 @@ private:
 
 	ValueIdx *vx;
   act_connection *id;  //name
+
+};
+
+class Arbiter {
+public:
+
+	Arbiter();
+	~Arbiter();
+
+	void AddElement(Condition *c);
+
+	void PrintArbiter();
+	void PrintInst(int n);
+
+private:
+	
+	std::vector<Condition *> a;
 
 };
 

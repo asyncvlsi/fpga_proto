@@ -252,9 +252,13 @@ void StateMachine::PrintVerilog() {
   }
   fprintf(stdout, "\n");
 
+	for (int ii = 0; ii < arb.size(); ii++) {
+		arb[ii]->PrintInst(ii);
+	}
+
 	if (top) {
-  	fprintf(stdout, "always @(posedge clock)\n");
-  	fprintf(stdout, "if (reset)\n\t");
+  	fprintf(stdout, "always @(posedge \\clock )\n");
+  	fprintf(stdout, "if (\\reset )\n\t");
   	fprintf(stdout, "sm%i_", number);
   	if (par) {
   	  PrintParent(par);
@@ -275,8 +279,8 @@ void StateMachine::PrintVerilog() {
   int first = 0;
 
   for (auto id : data) {
-    fprintf(stdout, "always @(posedge clock)\n");
-    fprintf(stdout, "if (reset) begin\n\t\\");
+    fprintf(stdout, "always @(posedge \\clock )\n");
+    fprintf(stdout, "if (\\reset ) begin\n\t\\");
 		fprintf(stdout, "%s", id.first->getName());
     fprintf(stdout, " <= 0;\n");
     fprintf(stdout, "end\n");
@@ -763,6 +767,10 @@ void Condition::PrintVerilog(int f){
         PrintScope(scope);
         fprintf(stdout, "cond_%i", num);
         break;
+      case (4) :
+        PrintScope(scope);
+        fprintf(stdout, "excl_guard_%i", num);
+        break;
       default :
         fatal_error("!!!\n");
     }
@@ -819,10 +827,20 @@ void Condition::PrintVerilog(int f){
 					}
       	}
         break;
+      case (4) :
+        PrintScope(scope);
+        fprintf(stdout, "excl_guard_%i = ", num);
+        PrintExpr(u.e);
+        fprintf(stdout, " ? 1'b1 : 1'b0 ");
+        break;
       default :
         fatal_error("!!!\n");
     }
-  }
+  } else if (f == 2) {
+		PrintScope(scope);
+		fprintf(stdout, "guard_%i", num);
+	}
+
 }
 
 /*
@@ -840,8 +858,8 @@ void Data::PrintVerilogHS(int f){
  
 
   if (f == 0) {
-    fprintf(stdout, "always @(posedge clock)\n");
-    fprintf(stdout, "if (reset) begin\n\t\\");
+    fprintf(stdout, "always @(posedge \\clock )\n");
+    fprintf(stdout, "if (\\reset ) begin\n\t\\");
     if (type == 1) {
       u.recv.chan->Print(stdout);
     } else if (type == 2) {
@@ -998,6 +1016,113 @@ void Port::Print(){
   }
   fprintf(stdout, "[%i:0]\t\\", width-1);
   connection->toid()->Print(stdout);
+}
+
+/*
+ *	Arbiter Class
+ */
+
+void Arbiter::PrintInst(int n) {
+
+	fprintf(stdout, "fair_hi (\n");
+	fprintf(stdout, "\t.WIDTH(%i)\n", a.size());
+	fprintf(stdout, ") arb_%i (\n", n);
+	fprintf(stdout, "\t .\\clock (\\clock )\n");
+	fprintf(stdout, "\t,.\\reset (\\reset )\n");
+
+	fprintf(stdout, "\t,.req ({");
+	for (auto i : a) {
+		fprintf(stdout, "\\");
+		i->PrintVerilog(0);
+		if (i != a[a.size()-1]) {
+			fprintf(stdout, " ,");
+		}
+	}
+	fprintf(stdout, " })\n");
+
+	fprintf(stdout, "\t,.grant ({");
+	for (auto i : a) {
+		fprintf(stdout, "\\");
+		i->PrintVerilog(2);
+		if (i != a[a.size()-1]) {
+			fprintf(stdout, " ,");
+		}
+	}
+	fprintf(stdout, " })\n");
+
+	fprintf(stdout, ");\n\n");
+}
+
+void Arbiter::PrintArbiter(){
+fprintf(stdout, "module fair_hi #(\n");
+fprintf(stdout, "\tparameter   WIDTH = 8\n");
+fprintf(stdout, ")(\n");
+fprintf(stdout, "\t\tinput   clock,\n");
+fprintf(stdout, "\t\tinput   reset,\n");
+fprintf(stdout, "\t\tinput   [WIDTH-1:   0]  req,\n");
+fprintf(stdout, "\t\toutput  [WIDTH-1:   0]  grant\n");
+fprintf(stdout, "\t);\n");
+fprintf(stdout, "\t\n");
+fprintf(stdout, "reg\t[WIDTH-1:0]\tpriority [0:WIDTH-1];\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "reg\t[WIDTH-1:0]\treq_d;\n");
+fprintf(stdout, "wire\t[WIDTH-1:0]\treq_neg;\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "wire shift_prio;\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "wire [WIDTH-1:0] match;\n");
+fprintf(stdout, "reg [WIDTH-1:0] arb_match;\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "always @(posedge clock)\n");
+fprintf(stdout, "if (reset)\n");
+fprintf(stdout, "\treq_d <=  0;\n");
+fprintf(stdout, "else\n");
+fprintf(stdout, "\treq_d <= req;\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "assign shift_prio = |(req_neg & priority[0]) & !(|arb_match);\n");
+fprintf(stdout, "\t\n");
+fprintf(stdout, "genvar j;\n");
+fprintf(stdout, "genvar i;\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "generate\n");
+fprintf(stdout, "for (j = WIDTH; j > 0; j = j-1) begin    \n");
+fprintf(stdout, "\n");
+fprintf(stdout, "always @ (*)\n");
+fprintf(stdout, "if (j > 1)\n");
+fprintf(stdout, "\tif (match[j-1] & &(!match[j-2:0]))\tarb_match[j-1] <= 1'b1;\n");
+fprintf(stdout, "\telse\t\t\t\t\t\t\t\tarb_match[j-1] <= 1'b0;\n");
+fprintf(stdout, "else\n");
+fprintf(stdout, "\tif (match[j-1])\tarb_match[j-1]	<= 1'b1;\n");
+fprintf(stdout, "\telse\t\t\tarb_match[j-1]	<= 1'b0;\n");
+fprintf(stdout, "end\n");
+fprintf(stdout, "endgenerate\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "generate\n");
+fprintf(stdout, "for (j = 0; j < WIDTH; j = j+1) begin\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "assign req_neg[j] = !req[j] & req_d[j];\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "assign grant = req & priority[0];\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "assign match[j] = |(req & priority[j]);\n");
+fprintf(stdout, "\n");
+fprintf(stdout, "always @(posedge clock)\n");
+fprintf(stdout, "if (reset)\n");
+fprintf(stdout, "\tpriority[j] <= {{j{1'b0}},1'b1,{(WIDTH-1-j){1'b0}}};\n");
+fprintf(stdout, "else if (shift_prio)\n");
+fprintf(stdout, "\tif (priority[j] == 1)\n");
+fprintf(stdout, "\t\tpriority[j] <= {1'b1, {(WIDTH-1){1'b0}}};\n");
+fprintf(stdout, "\telse\n");
+fprintf(stdout, "\t\tpriority[j] <= priority[j] >> 1;\n");
+fprintf(stdout, "else if (arb_match[j]) begin\n");
+fprintf(stdout, "\tpriority[0] <= priority[j];\n");
+fprintf(stdout, "\tpriority[j] <= priority[0];\n");
+fprintf(stdout, "end\n");
+fprintf(stdout, "\t\n");
+fprintf(stdout, "end\n");
+fprintf(stdout, "endgenerate\n");
+fprintf(stdout, "\t\n");
+fprintf(stdout, "endmodule\n");
 }
 
 }
