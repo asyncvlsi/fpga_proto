@@ -80,7 +80,10 @@ void StateMachine::AddInst (StateMachineInst *inst_) {
 void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
-void StateMachine::AddVar(Variable *v_){ vars.push_back(v_); }
+void StateMachine::AddVar(Variable *v_){ 
+	vars.push_back(v_); 
+	vm[v_->GetId()] = v_;
+}
 void StateMachine::AddData(ValueIdx* id, Data *dd) {data[id].push_back(dd);}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
@@ -106,6 +109,7 @@ int StateMachine::GetGN() { return guard_num; }
 int StateMachine::GetSN() { return st_num; }
 int StateMachine::GetCN() { return commun_num; }
 int StateMachine::GetCCN() { return comma_num; }
+Variable *StateMachine::GetVar(ValueIdx *vx) { return vm[vx]; }
 std::vector<Variable *> StateMachine::GetVars(){ return vars; }
 std::vector<Port *> StateMachine::GetPorts(){ return ports; }
 StateMachine *StateMachine::GetPar() { return par; }

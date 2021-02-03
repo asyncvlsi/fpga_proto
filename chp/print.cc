@@ -278,17 +278,24 @@ void StateMachine::PrintVerilog() {
   int has_comm = 0;
   int first = 0;
 
+	int ef = 1;
+
   for (auto id : data) {
     fprintf(stdout, "always @(posedge \\clock )\n");
-    fprintf(stdout, "if (\\reset ) begin\n\t\\");
-		fprintf(stdout, "%s", id.first->getName());
-    fprintf(stdout, " <= 0;\n");
-    fprintf(stdout, "end\n");
+		if (id.second[0]->GetType() == 0 && 
+					vm[id.first]->GetDimNum() < 1 ||
+				id.second[0]->GetType() != 0) {
+   		fprintf(stdout, "if (\\reset ) begin\n\t\\");
+	 		fprintf(stdout, "%s", id.first->getName());
+   		fprintf(stdout, " <= 0;\n");
+   		fprintf(stdout, "end\n");
+	 		ef = 0;
+		}
     for (auto dd : id.second) {
 			if (dd->GetType() != 2) {
-	      dd->PrintVerilogCondition();
+	      dd->PrintVerilogCondition(ef);
 			} else {
-				dd->PrintVerilogConditionUP();
+				dd->PrintVerilogConditionUP(ef);
 			}
       fprintf(stdout, " begin\n\t\\");
       dd->PrintVerilogAssignment();
@@ -296,6 +303,7 @@ void StateMachine::PrintVerilog() {
       if (dd->GetType() == 1 || dd->GetType() == 2) {
         has_comm = 1;
       }
+			ef = 0;
     }
     fprintf(stdout, "\n");
 
@@ -306,15 +314,16 @@ void StateMachine::PrintVerilog() {
             dd->PrintVerilogHS(first);
             first = 1;
           }
-          dd->PrintVerilogCondition();
+          dd->PrintVerilogCondition(ef);
           dd->PrintVerilogHS(first);
           first = 2;
-          dd->PrintVerilogConditionUP();
+          dd->PrintVerilogConditionUP(ef);
           dd->PrintVerilogHS(first);
           first = 1;
         }
       }
     }
+		ef = 1;
     first = 0;
     fprintf(stdout, "\n");
   }
@@ -932,14 +941,22 @@ void Data::PrintVerilogAssignment() {
  
 }
 
-void Data::PrintVerilogCondition(){
-  fprintf(stdout, "else if (");
+void Data::PrintVerilogCondition(int f){
+	if (f == 0) {
+	  fprintf(stdout, "else if (");
+	} else {
+	  fprintf(stdout, "if (");
+	}
 	cond->PrintVerilog(0);
   fprintf(stdout, ")");
 }
 
-void Data::PrintVerilogConditionUP(){
-  fprintf(stdout, "else if (");
+void Data::PrintVerilogConditionUP(int f){
+	if (f == 0) {
+  	fprintf(stdout, "else if (");
+	} else {
+  	fprintf(stdout, "if (");
+	}
   if (type == 1) {
     u.recv.up_cond->PrintVerilog(0);
   } else if (type == 2) {

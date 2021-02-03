@@ -195,6 +195,7 @@ public:
   int GetKids();
   StateMachine *GetPar();
   StateMachine *GetNext();
+	Variable *GetVar(ValueIdx *);
   std::vector<Variable *> GetVars();
   std::vector<Port *> GetPorts();
   Process *GetProc();
@@ -226,6 +227,7 @@ private:
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;
+	std::map<ValueIdx *, Variable *> vm;
 
   std::vector<Condition *> guard_condition;
   std::vector<Condition *> state_condition;
@@ -290,8 +292,8 @@ public:
 
   void PrintPlain();
   void PrintVerilogVar();
-  void PrintVerilogCondition();
-  void PrintVerilogConditionUP();
+  void PrintVerilogCondition(int);
+  void PrintVerilogConditionUP(int);
   void PrintVerilogAssignment();
   void PrintVerilogHS(int);
 
@@ -382,6 +384,7 @@ public:
 
 	ValueIdx *GetId();
   act_connection *GetCon();
+	int GetDimNum();
 
 	int IsChan();
 

@@ -6,17 +6,10 @@ namespace fpga {
 
 static ActBooleanizePass *BOOL = NULL;
 
-//Returns true if chp type is simple
-//fasle if complex. In case of complex 
-//statements a new child state machine
-//is created
-bool is_simple(int type) {
-  if (type == ACT_CHP_COMMA) {
-    return true;
-  } else {
-    return false;
-  }
-}
+//Function to check SELECT and LOOP statements
+//to be empty
+bool check_empty ()
+{}
 
 //Function to check whether variable is added to the list
 //or not.
@@ -86,7 +79,6 @@ Condition *traverse_chp(Process *proc,
 
   Condition *tmp;
 
-
   switch (chp_lang->type) {
 
   case ACT_CHP_COMMA: {
@@ -130,12 +122,15 @@ Condition *traverse_chp(Process *proc,
       cl = (act_chp_lang_t *)list_value(li);
 
       //if skip statement simply ignore
-      if (cl->type == ACT_CHP_SKIP) { continue; }
-      if (cl->type == ACT_CHP_FUNC) { continue; }
+      if (cl->type == ACT_CHP_SKIP || 
+					cl->type == ACT_CHP_FUNC) {
+				continue;
+			}
 
       //if statement is simple then no new sm
       //is needed otherwise create new child sm
-      if (is_simple(cl->type)) {
+      //if (is_simple(cl->type)) {
+      if (cl->type == ACT_CHP_COMMA) {
         tmp = traverse_chp(proc, cl, sm, tsm, child_cond);
       } else {
         StateMachine *csm = new StateMachine();
@@ -209,7 +204,7 @@ Condition *traverse_chp(Process *proc,
 
       cl = (act_chp_lang_t *)list_value(li);
 
-      //if statement is SKIP then simply ignore it 
+      //if statement is SKIP then simply ignore it
       if (cl->type != ACT_CHP_SKIP && cl->type != ACT_CHP_FUNC) {
 
         Comma *next_com = new Comma;
@@ -249,7 +244,8 @@ Condition *traverse_chp(Process *proc,
 
         //if child statement is simple then no new sm
         //is needed otherwise create new child sm    
-        if (is_simple(cl->type)) {
+        //if (is_simple(cl->type)) {
+        if (cl->type == ACT_CHP_COMMA) {
           tmp = traverse_chp(proc, cl, sm, tsm, child_cond);
   
           //if simple statement returns condition then we
@@ -367,7 +363,7 @@ Condition *traverse_chp(Process *proc,
 
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
-      if (gg->g) {
+		  if (gg->g) {
         if (gg->s && gg->s->type != ACT_CHP_SKIP &&
 										 gg->s->type != ACT_CHP_FUNC) {
 					empty_select = 0;
@@ -427,7 +423,8 @@ Condition *traverse_chp(Process *proc,
 					}
     	    sm->AddCondition(child_cond);
     	
-    	    if (is_simple(gg->s->type)) {
+    	    //if (is_simple(gg->s->type)) {
+    	    if (gg->s->type == ACT_CHP_COMMA) {
     	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
     	    } else {
     	      StateMachine *csm = new StateMachine();
@@ -598,7 +595,8 @@ Condition *traverse_chp(Process *proc,
 					}
     	    sm->AddCondition(child_cond);
     	
-    	    if (is_simple(gg->s->type)) {
+    	    //if (is_simple(gg->s->type)) {
+    	    if (gg->s->type == ACT_CHP_COMMA) {
     	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
     	    } else {
     	      StateMachine *csm = new StateMachine();
@@ -756,7 +754,8 @@ Condition *traverse_chp(Process *proc,
 			}
       sm->AddCondition(child_cond);
 
-      if (is_simple(gg->s->type)) {
+      //if (is_simple(gg->s->type)) {
+      if (gg->s->type == ACT_CHP_COMMA) {
         tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
       } else {
         StateMachine *csm = new StateMachine();
@@ -883,6 +882,7 @@ Condition *traverse_chp(Process *proc,
     Expr *e = chp_lang->u.assign.e;
 		ValueIdx *var_vx = var_id->rootVx(scope);
 
+		int var_dims = 0;
     int var_w = 0;
     ihash_bucket *hb;
     act_booleanized_var_t *bv;
@@ -900,6 +900,7 @@ Condition *traverse_chp(Process *proc,
 				for (auto i = 0; i < dv->a->nDims(); i++) {
 					int dim_size = dv->a->range_size(i);
 					nv->AddDimension(dim_size-1);
+					var_dims++;
 				}
 				tsm->AddVar(nv);
 			}
@@ -919,15 +920,20 @@ Condition *traverse_chp(Process *proc,
 					for (auto i = 0; i < var_a->nDims(); i++) {
 						int dim_size = var_a->range_size(i);
 						nv->AddDimension(dim_size-1);
+						var_dims++;
 					}
 				}
   			tsm->AddVar(nv);
   		}
 		}
 
+    d = new Data(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
+    tsm->AddData(var_id->rootVx(scope), d);
+
     std::vector<ActId *> var_col;
     collect_vars(e, var_col);
     for (auto v : var_col) {
+			var_dims = 0;
 			ValueIdx *evar_vx = v->rootVx(scope);
 	    act_connection *evar_con;
 			if (v->isDynamicDeref() == 1) {
@@ -941,6 +947,7 @@ Condition *traverse_chp(Process *proc,
 					for(auto i = 0; i < dv->a->nDims(); i++) {
 						int dim_size = dv->a->range_size(i);
 						nv->AddDimension(dim_size-1);
+						var_dims++;
 					}
 					tsm->AddVar(nv);
 				}
@@ -963,15 +970,13 @@ Condition *traverse_chp(Process *proc,
 						for (auto i = 0; i < var_a->nDims(); i++) {
 							int dim_size = var_a->range_size(i);
 							nv->AddDimension(dim_size-1);
+							var_dims++;
 						}
 					}
 					tsm->AddVar(nv);
 				}
 			}
     }
-
-    d = new Data(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
-    tsm->AddData(var_id->rootVx(scope), d);
 
 		//Return condition
    	if (pc) {

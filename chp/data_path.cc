@@ -134,6 +134,10 @@ ValueIdx *Variable::GetId(){
 	return vx;
 }
 
+int Variable::GetDimNum(){
+	return dim.size();
+}
+
 void Variable::AddDimension(int d) {
 	dim.push_back(d);
 }
