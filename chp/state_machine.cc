@@ -177,6 +177,10 @@ void StateMachineInst::SetSM(StateMachine *sm_){
 	sm = sm_;
 }
 
+void StateMachineInst::SetCtrlChan(int i) {
+	ports[i]->SetCtrlChan();
+}
+
 Process *StateMachineInst::GetProc(){
 	return p;
 }

@@ -109,6 +109,14 @@ void Port::SetInst() {
 	inst = 1;
 }
 
+void Port::SetCtrlChan() {
+	if (ischan == 0) {
+		fatal_error("can't use it");
+	} else {
+		ischan = 2;
+	}
+}
+
 Port::Port(){
   dir = 0;
   width = 0;

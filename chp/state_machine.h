@@ -138,6 +138,7 @@ public:
 	~StateMachineInst();
 
 	void SetSM(StateMachine *);
+	void SetCtrlChan(int i);
 
 	Process *GetProc();
 	std::vector<Port *> GetPorts();
@@ -356,6 +357,7 @@ public:
 	int GetInst();
 
 	void SetInst();
+	void SetCtrlChan();
 
   void Print();
 	void PrintName();
@@ -364,7 +366,7 @@ private:
 
   int dir;  //0 - output; 1 - input
   int width;
-  int ischan; //0 - no, 1 - yes;
+  int ischan; //0 - no, 1 - yes, 2 - control chan(no data)
 	int inst;
 
   act_connection *connection;

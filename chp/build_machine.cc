@@ -6,11 +6,6 @@ namespace fpga {
 
 static ActBooleanizePass *BOOL = NULL;
 
-//Function to check SELECT and LOOP statements
-//to be empty
-bool check_empty ()
-{}
-
 //Function to check whether variable is added to the list
 //or not.
 //0 - not declared
@@ -337,6 +332,7 @@ Condition *traverse_chp(Process *proc,
 
     std::pair<State *, Condition *> n;
   	std::vector<Condition *> vc;
+		std::vector<Condition *> ve;
     //Selection statement completion happens after completion of
     //execution of one if the selction options. Thus in case of
     //return state existance function returns ORed comma condition
@@ -360,6 +356,7 @@ Condition *traverse_chp(Process *proc,
 		//[]else -> skip
 		//] -> nothing going to happen
 		int empty_select = 0;
+		int else_flag = 0;
 
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
@@ -387,29 +384,53 @@ Condition *traverse_chp(Process *proc,
 										&& gg->s->type != ACT_CHP_FUNC) {
     	      guard = new Condition(gg->g, sm->GetGN(), sm);
     	      sm->AddCondition(guard);
+						ve.push_back(guard);
     	    } else {
 						continue;
 					}
     	  } else {
-					continue;
+					if (gg->s->type == ACT_CHP_FUNC) {
+						char tmp[1024] = "log";
+						if (strcmp(tmp, gg->s->u.func.name->s) != 0){
+							fatal_error("I don't know this function");
+						}
+					}
+					guard = NULL;
+					else_flag = 1;
 				}
-    	
+
     	  if (gg->s) {
-    	    ss = new State(gg->s->type, sm->GetSize(), sm);
+					if (gg->s->type != ACT_CHP_FUNC) {
+	    	    ss = new State(gg->s->type, sm->GetSize(), sm);
+					} else {
+    	    	ss = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
+					}
     	    sm->AddSize();
-    	
+
 					Comma *guard_com = new Comma;
 					guard_com->type = 0;
 					guard_com->c.push_back(zero_s_cond);
 					if (pc) { guard_com->c.push_back(pc); }
-					guard_com->c.push_back(guard);
+
+					if (else_flag == 1) {
+						Comma *else_com = new Comma;
+						else_com->type = 2;
+						else_com->c = ve;
+						Condition *else_guard;
+						else_guard = new Condition(else_com, sm->GetCCN(), sm);
+						sm->AddCondition(else_guard);
+						guard_com->c.push_back(else_guard);
+					} else {
+						guard_com->c.push_back(guard);
+					}
+
 					Condition *full_guard;
 					full_guard = new Condition(guard_com, sm->GetCCN(), sm);
     	    n.first = ss;
     	    n.second = full_guard;
     	    s->AddNextState(n);
 					sm->AddCondition(full_guard);
-    	
+
 					if (pc) {
 						Comma *child_com = new Comma;
 						child_com->type = 0;
@@ -422,10 +443,12 @@ Condition *traverse_chp(Process *proc,
 	  	      child_cond = new Condition(s, sm->GetSN(), sm);
 					}
     	    sm->AddCondition(child_cond);
-    	
-    	    //if (is_simple(gg->s->type)) {
+
     	    if (gg->s->type == ACT_CHP_COMMA) {
     	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+					} else if (gg->s->type == ACT_CHP_SKIP ||
+										 gg->s->type == ACT_CHP_FUNC ){
+						tmp = child_cond;
     	    } else {
     	      StateMachine *csm = new StateMachine();
     	      csm->SetNumber(sm->GetKids());
@@ -461,7 +484,7 @@ Condition *traverse_chp(Process *proc,
 			Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(),sm);
 			sm->AddCondition(exit_s_cond);
 			vc.push_back(exit_s_cond);
-    	
+
 			//Create termination condition which is either
 			//statement completion or exit state
     	Comma *term_com = new Comma;
@@ -504,6 +527,7 @@ Condition *traverse_chp(Process *proc,
 
     std::pair<State *, Condition *> n;
   	std::vector<Condition *> vc;
+		std::vector<Condition *> ve;
     //Selection statement completion happens after completion of
     //execution of one if the selction options. Thus in case of
     //return state existance function returns ORed comma condition
@@ -527,6 +551,7 @@ Condition *traverse_chp(Process *proc,
 		//[]else -> skip
 		//] -> nothing going to happen
 		int empty_select = 0;
+		int else_flag = 0;
 
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
@@ -559,11 +584,18 @@ Condition *traverse_chp(Process *proc,
     	      Condition *arb_guard = new Condition(gg->g, sm->GetGN(), sm, 1);
     	      sm->AddCondition(arb_guard);
 						arb->AddElement(arb_guard);
+						ve.push_back(guard);
     	    } else {
 						continue;
 					}
     	  } else {
-					continue;
+					if (gg->s && gg->s->type != ACT_CHP_SKIP
+										&& gg->s->type != ACT_CHP_FUNC)	{
+						guard = NULL;
+						else_flag = 1;
+					} else {
+						continue;
+					}
 				}
     	
     	  if (gg->s) {
@@ -574,7 +606,19 @@ Condition *traverse_chp(Process *proc,
 					guard_com->type = 0;
 					guard_com->c.push_back(zero_s_cond);
 					if (pc) { guard_com->c.push_back(pc); }
-					guard_com->c.push_back(guard);
+
+					if (else_flag == 1) {
+						Comma *else_com = new Comma;
+						else_com->type = 2;
+						else_com->c = ve;
+						Condition *else_guard;
+						else_guard = new Condition(else_com, sm->GetCCN(), sm);
+						sm->AddCondition(else_guard);
+						guard_com->c.push_back(else_guard);
+						else_flag = 0;
+					} else {
+						guard_com->c.push_back(guard);
+					}
 					Condition *full_guard;
 					full_guard = new Condition(guard_com, sm->GetCCN(), sm);
     	    n.first = ss;
@@ -595,7 +639,6 @@ Condition *traverse_chp(Process *proc,
 					}
     	    sm->AddCondition(child_cond);
     	
-    	    //if (is_simple(gg->s->type)) {
     	    if (gg->s->type == ACT_CHP_COMMA) {
     	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
     	    } else {
@@ -1078,63 +1121,79 @@ Condition *traverse_chp(Process *proc,
 
     std::vector<ActId *> var_col;
     l = chp_lang->u.comm.rhs;
-    for (li = list_first(l); li; li = list_next(li)) {
-
-      Expr *vex = NULL;
-      vex = (Expr *)list_value(li);
-      collect_vars(vex, var_col);
-
-			Variable *nv;
-      for (auto v : var_col) {
-				int var_w = 0;
-				ValueIdx *evar_vx = v->rootVx(scope);
-				if (v->isDynamicDeref() == 1) {
-        	act_connection *evar_con = evar_vx->connection();
-					hb = ihash_lookup(bnl->cdH, (long)evar_con);
-					dv = (act_dynamic_var_t *)hb->v;
-					var_w = dv->width;
-					if (is_declared(tsm, evar_vx) == 0) {
-						nv = new Variable(0,0,evar_vx);
-						nv->AddDimension(var_w-1);
-						for (auto i = 0; i < dv->a->nDims(); i++) {
-							int dim_size = dv->a->range_size(i);
-							nv->AddDimension(dim_size-1);
-						}
-						tsm->AddVar(nv);
-					}
-				} else {
-        	act_connection *evar_con = v->Canonical(scope);
-        	hb = ihash_lookup(bnl->cH, (long)evar_con);
-        	bv = (act_booleanized_var_t *)hb->v;
-        
-					int decl_type = is_declared(tsm,evar_vx);
-					int var_veri_type = decl_type == 0 ? 1 : 0;
-        
-					if (decl_type == 0 || decl_type == 4) {
-						var_w = bv->width;
-						nv = new Variable(var_veri_type, 0, evar_vx);
-						nv->AddDimension(var_w-1);
-						if (v->arrayInfo()) {
-							Array *var_a = v->arrayInfo();
-							InstType *it = scope->FullLookup(v, &var_a);
-							var_a = it->arrayInfo();
-							for (auto i = 0; i < var_a->nDims(); i++) {
-								int dim_size = var_a->range_size(i);
-								nv->AddDimension(dim_size);
+		if (!list_isempty(l)) {
+    	for (li = list_first(l); li; li = list_next(li)) {
+    	
+    	  Expr *vex = NULL;
+    	  vex = (Expr *)list_value(li);
+    	  collect_vars(vex, var_col);
+    	
+				Variable *nv;
+    	  for (auto v : var_col) {
+					int var_w = 0;
+					ValueIdx *evar_vx = v->rootVx(scope);
+					if (v->isDynamicDeref() == 1) {
+    	    	act_connection *evar_con = evar_vx->connection();
+						hb = ihash_lookup(bnl->cdH, (long)evar_con);
+						dv = (act_dynamic_var_t *)hb->v;
+						var_w = dv->width;
+						if (is_declared(tsm, evar_vx) == 0) {
+							nv = new Variable(0,0,evar_vx);
+							nv->AddDimension(var_w-1);
+							for (auto i = 0; i < dv->a->nDims(); i++) {
+								int dim_size = dv->a->range_size(i);
+								nv->AddDimension(dim_size-1);
 							}
+							tsm->AddVar(nv);
 						}
-						tsm->AddVar(nv);
+					} else {
+    	    	act_connection *evar_con = v->Canonical(scope);
+    	    	hb = ihash_lookup(bnl->cH, (long)evar_con);
+    	    	bv = (act_booleanized_var_t *)hb->v;
+    	    
+						int decl_type = is_declared(tsm,evar_vx);
+						int var_veri_type = decl_type == 0 ? 1 : 0;
+    	    
+						if (decl_type == 0 || decl_type == 4) {
+							var_w = bv->width;
+							nv = new Variable(var_veri_type, 0, evar_vx);
+							nv->AddDimension(var_w-1);
+							if (v->arrayInfo()) {
+								Array *var_a = v->arrayInfo();
+								InstType *it = scope->FullLookup(v, &var_a);
+								var_a = it->arrayInfo();
+								for (auto i = 0; i < var_a->nDims(); i++) {
+									int dim_size = var_a->range_size(i);
+									nv->AddDimension(dim_size);
+								}
+							}
+							tsm->AddVar(nv);
+						}
 					}
+    	  }
+    	
+    	  d = new Data (2, 0, 0, proc, tsm, exit_cond, 
+																			init_cond, chan_id, vex);
+    	  tsm->AddData(chan_id->rootVx(scope), d);
+    	
+    	  var_col.clear();
+    	
+    	}
+		} else {
+			Expr *dex = NULL;
+			char tmp1[1024];
+			char tmp2[1024];
+			chan_id->sPrint(tmp1, 1024);
+			for (auto pp : tsm->GetPorts()) {
+				pp->GetCon()->toid()->sPrint(tmp2, 1024);
+				if (strcmp(tmp1, tmp2) == 0) {
+					pp->SetCtrlChan();
 				}
-      }
-
-      d = new Data (2, 0, 0, proc, tsm, exit_cond, 
-																				init_cond, chan_id, vex);
-      tsm->AddData(chan_id->rootVx(scope), d);
-
-      var_col.clear();
-
-    }
+			}
+			d = new Data (2, 0, 0, proc, tsm, exit_cond,
+																		init_cond, chan_id, dex);
+			tsm->AddData(NULL, d);
+		}
 
 		//Return to initial state condition is when parent
 		//machine leaves current state
@@ -1238,66 +1297,86 @@ Condition *traverse_chp(Process *proc,
 		}
 
     l = chp_lang->u.comm.rhs;
-    for (li = list_first(l); li; li = list_next(li)) {
 
-      ActId *var_id = NULL;
-      act_connection *var_con = NULL;
-      var_id = (ActId *)list_value(li);
-			ValueIdx *var_vx = var_id->rootVx(scope);
-			
-      act_dynamic_var_t *dv;
-      act_booleanized_var_t *bv;
-
-			int var_w = 0;
-
-      Variable *nv = NULL;
-			if (var_id->isDynamicDeref() == 1) {
-      	var_con = var_vx->connection();
-	      hb = ihash_lookup(bnl->cdH, (long)var_con);
-      	dv = (act_dynamic_var_t *)hb->v;
-				var_w = dv->width;
-
-				if (is_declared(tsm, var_vx) == 0) {
-					nv = new Variable(0,0,var_vx);
-					nv->AddDimension(var_w-1);
-					for (auto i = 0; i < dv->a->nDims(); i++) {
-						int dim_size = dv->a->range_size(0);
-						nv->AddDimension(dim_size-1);
-					}
-					tsm->AddVar(nv);
-				}
-			} else {
-      	var_con = var_id->Canonical(scope);
-	      hb = ihash_lookup(bnl->cH, (long)var_con);
-      	bv = (act_booleanized_var_t *)hb->v;
-
-				int decl_type = is_declared(tsm,var_vx);
-				int var_veri_type = decl_type == 0 ? 0 : 1;
-
-				if (decl_type == 0 || decl_type == 3) {
-      		var_w = bv->width;
-      		nv = new Variable(0, var_veri_type, var_vx);
-					nv->AddDimension(var_w-1);
-					if (var_id->arrayInfo()) {
-						Array *var_a = var_id->arrayInfo();
-						InstType *it = scope->FullLookup(var_id, &var_a);
-						var_a = it->arrayInfo();
-						for (auto i = 0; i < var_a->nDims(); i++) {
-							int dim_size = var_a->range_size(i);
+		if (!list_isempty(l)) {
+    	for (li = list_first(l); li; li = list_next(li)) {
+    	
+    	  ActId *var_id = NULL;
+    	  act_connection *var_con = NULL;
+    	  var_id = (ActId *)list_value(li);
+				ValueIdx *var_vx = var_id->rootVx(scope);
+				
+    	  act_dynamic_var_t *dv;
+    	  act_booleanized_var_t *bv;
+    	
+				int var_w = 0;
+    	
+    	  Variable *nv = NULL;
+				if (var_id->isDynamicDeref() == 1) {
+    	  	var_con = var_vx->connection();
+	  	    hb = ihash_lookup(bnl->cdH, (long)var_con);
+    	  	dv = (act_dynamic_var_t *)hb->v;
+					var_w = dv->width;
+    	
+					if (is_declared(tsm, var_vx) == 0) {
+						nv = new Variable(0,0,var_vx);
+						nv->AddDimension(var_w-1);
+						for (auto i = 0; i < dv->a->nDims(); i++) {
+							int dim_size = dv->a->range_size(0);
 							nv->AddDimension(dim_size-1);
 						}
+						tsm->AddVar(nv);
 					}
-					tsm->AddVar(nv);
+				} else {
+    	  	var_con = var_id->Canonical(scope);
+	  	    hb = ihash_lookup(bnl->cH, (long)var_con);
+    	  	bv = (act_booleanized_var_t *)hb->v;
+    	
+					int decl_type = is_declared(tsm,var_vx);
+					int var_veri_type = decl_type == 0 ? 0 : 1;
+    	
+					if (decl_type == 0 || decl_type == 3) {
+    	  		var_w = bv->width;
+    	  		nv = new Variable(0, var_veri_type, var_vx);
+						nv->AddDimension(var_w-1);
+						if (var_id->arrayInfo()) {
+							Array *var_a = var_id->arrayInfo();
+							InstType *it = scope->FullLookup(var_id, &var_a);
+							var_a = it->arrayInfo();
+							for (auto i = 0; i < var_a->nDims(); i++) {
+								int dim_size = var_a->range_size(i);
+								nv->AddDimension(dim_size-1);
+							}
+						}
+						tsm->AddVar(nv);
+					}
+				}
+    	
+				//Add data type as receive is basically assignment
+				//to the variable
+    	  d = new Data (1, 0, 0, proc, tsm, exit_cond, 
+																			init_cond, var_id, chan_id);
+    	
+    	  tsm->AddData(var_id->rootVx(scope), d);
+    	}
+		} else {
+			ActId *did = NULL;
+			int found = 0;
+			char tmp1[1024];
+			char tmp2[1024];
+			chan_id->sPrint(tmp1, 1024);
+			for (auto pp : tsm->GetPorts()) {
+				pp->GetCon()->toid()->sPrint(tmp2, 1024);
+				if (strcmp(tmp1, tmp2) == 0) {
+					pp->SetCtrlChan();
+					found = 1;
+					break;
 				}
 			}
-
-			//Add data type as receive is basically assignment
-			//to the variable
-      d = new Data (1, 0, 0, proc, tsm, exit_cond, 
-																		init_cond, var_id, chan_id);
-
-      tsm->AddData(var_id->rootVx(scope), d);
-    }
+			d = new Data(1, 0, 0, proc, tsm, exit_cond,
+																		init_cond, did, chan_id);
+			tsm->AddData(NULL, d);
+		}
 
 		//Return to initial state condition is when parent
 		//machine leaves current state
@@ -1388,6 +1467,11 @@ void map_instances(CHPProject *cp){
 			for (auto pr1 = cp->Head(); pr1; pr1 = pr1->GetNext()) {
 				if (inst->GetProc() == pr1->GetProc()) {
 					inst->SetSM(pr1);
+					for (auto i = 0; i < pr1->GetPorts().size(); i++) {
+						if (pr1->GetPorts()[i]->GetChan() == 2) {
+							inst->SetCtrlChan(i);
+						}
+					}
 				}
 			}
 		}

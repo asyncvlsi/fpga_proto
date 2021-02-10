@@ -281,51 +281,72 @@ void StateMachine::PrintVerilog() {
 	int ef = 1;
 
   for (auto id : data) {
-    fprintf(stdout, "always @(posedge \\clock )\n");
-		if (id.second[0]->GetType() == 0 && 
-					vm[id.first]->GetDimNum() < 1 ||
-				id.second[0]->GetType() != 0) {
-   		fprintf(stdout, "if (\\reset ) begin\n\t\\");
-	 		fprintf(stdout, "%s", id.first->getName());
-   		fprintf(stdout, " <= 0;\n");
-   		fprintf(stdout, "end\n");
-	 		ef = 0;
-		}
-    for (auto dd : id.second) {
-			if (dd->GetType() != 2) {
-	      dd->PrintVerilogCondition(ef);
-			} else {
-				dd->PrintVerilogConditionUP(ef);
+		if (id.first) {
+  	  fprintf(stdout, "always @(posedge \\clock )\n");
+			if (id.second[0]->GetType() == 0 && 
+						vm[id.first]->GetDimNum() < 1 ||
+					id.second[0]->GetType() != 0) {
+  	 		fprintf(stdout, "if (\\reset ) begin\n\t\\");
+		 		fprintf(stdout, "%s", id.first->getName());
+  	 		fprintf(stdout, " <= 0;\n");
+  	 		fprintf(stdout, "end\n");
+		 		ef = 0;
 			}
-      fprintf(stdout, " begin\n\t\\");
-      dd->PrintVerilogAssignment();
-      fprintf(stdout, "end\n");
-      if (dd->GetType() == 1 || dd->GetType() == 2) {
-        has_comm = 1;
-      }
-			ef = 0;
-    }
-    fprintf(stdout, "\n");
-
-    if (has_comm) {
-      for (auto dd : id.second) {
-        if (dd->GetType() == 1 || dd->GetType() == 2) {
-          if (first == 0) {
-            dd->PrintVerilogHS(first);
-            first = 1;
-          }
-          dd->PrintVerilogCondition(ef);
-          dd->PrintVerilogHS(first);
-          first = 2;
-          dd->PrintVerilogConditionUP(ef);
-          dd->PrintVerilogHS(first);
-          first = 1;
-        }
-      }
-    }
-		ef = 1;
-    first = 0;
-    fprintf(stdout, "\n");
+  	  for (auto dd : id.second) {
+				if (dd->GetType() != 2) {
+		      dd->PrintVerilogCondition(ef);
+				} else {
+					dd->PrintVerilogConditionUP(ef);
+				}
+  	    fprintf(stdout, " begin\n\t\\");
+  	    dd->PrintVerilogAssignment();
+  	    fprintf(stdout, "end\n");
+  	    if (dd->GetType() == 1 || dd->GetType() == 2) {
+  	      has_comm = 1;
+  	    }
+				ef = 0;
+  	  }
+  	  fprintf(stdout, "\n");
+  	
+  	  if (has_comm) {
+  	    for (auto dd : id.second) {
+  	      if (dd->GetType() == 1 || dd->GetType() == 2) {
+  	        if (first == 0) {
+  	          dd->PrintVerilogHS(first);
+  	          first = 1;
+  	        }
+  	        dd->PrintVerilogCondition(ef);
+  	        dd->PrintVerilogHS(first);
+  	        first = 2;
+  	        dd->PrintVerilogConditionUP(ef);
+  	        dd->PrintVerilogHS(first);
+  	        first = 1;
+  	      }
+  	    }
+  	  }
+			ef = 1;
+  	  first = 0;
+  	  fprintf(stdout, "\n");
+		} else {
+			for (auto dd : id.second) {
+				ef = 0;
+  	  	if (dd->GetType() == 1 || dd->GetType() == 2) {
+  	  	  if (first == 0) {
+  	  	    dd->PrintVerilogHS(first);
+  	  	    first = 1;
+  	  	  }
+  	  	  dd->PrintVerilogCondition(ef);
+  	  	  dd->PrintVerilogHS(first);
+  	  	  first = 2;
+  	  	  dd->PrintVerilogConditionUP(ef);
+  	  	  dd->PrintVerilogHS(first);
+  	  	  first = 1;
+  	  	}
+				first = 0;
+			}
+			ef = 1;
+			fprintf(stdout, "\n");
+		}
   }
 
 	for (auto i : inst) {
@@ -350,12 +371,14 @@ void StateMachineInst::PrintVerilog(){
 	fprintf(stdout, "\t.\\clock (\\clock )\n");
 	fprintf(stdout, "\t,.\\reset (\\reset )\n");
 	for (auto i = 0; i < ports.size(); i++) {
-		fprintf(stdout, "\t,.\\");
-		sm->GetPorts()[i]->PrintName();
-		fprintf(stdout, " (\\");
-		ports[i]->PrintName();
-		fprintf(stdout, " )\n");
-		if (ports[i]->GetChan() == 1) {
+		if (ports[i]->GetChan() != 2) {
+			fprintf(stdout, "\t,.\\");
+			sm->GetPorts()[i]->PrintName();
+			fprintf(stdout, " (\\");
+			ports[i]->PrintName();
+			fprintf(stdout, " )\n");
+		}
+		if (ports[i]->GetChan() != 0) {
 			fprintf(stdout, "\t,.\\");
 			sm->GetPorts()[i]->PrintName();
 			fprintf(stdout, "_ready (\\");
@@ -486,6 +509,7 @@ void State::PrintVerilog(int p) {
  */
 
 void PrintExpression(Expr *e, StateMachine *scope) {
+//	fprintf(stdout, "TYPE: %i\n", e->type);
   switch (e->type) {
     case (E_AND):
       PrintExpression(e->u.e.l, scope);
@@ -523,7 +547,7 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       break;
     case (E_MOD):
       PrintExpression(e->u.e.l, scope);
-      fprintf(stdout, " % ");
+      fprintf(stdout, " %% ");
       PrintExpression(e->u.e.r, scope);
       break;
     case (E_LSL):
@@ -1011,7 +1035,7 @@ void Port::PrintName(){
 
 void Port::Print(){
   if (dir == 0) {
-    if (ischan) {
+    if (ischan != 0) {
       fprintf(stdout, "\t,output reg\t\\");
       connection->toid()->Print(stdout);
       fprintf(stdout, "_valid\n");
@@ -1019,9 +1043,11 @@ void Port::Print(){
       connection->toid()->Print(stdout);
       fprintf(stdout, "_ready\n");
     }
-    fprintf(stdout, "\t,output reg\t");
+		if (ischan != 2) {
+    	fprintf(stdout, "\t,output reg\t");
+		}
   } else {
-    if (ischan) {
+    if (ischan != 0)  {
       fprintf(stdout, "\t,output reg\t\\");
       connection->toid()->Print(stdout);
       fprintf(stdout, "_ready\n");
@@ -1029,10 +1055,14 @@ void Port::Print(){
       connection->toid()->Print(stdout);
       fprintf(stdout, "_valid\n");
     }
-    fprintf(stdout, "\t,input     \t");
+		if (ischan != 2) {
+    	fprintf(stdout, "\t,input     \t");
+		}
   }
-  fprintf(stdout, "[%i:0]\t\\", width-1);
-  connection->toid()->Print(stdout);
+	if (ischan != 2) {
+  	fprintf(stdout, "[%i:0]\t\\", width-1);
+  	connection->toid()->Print(stdout);
+	}
 }
 
 /*
