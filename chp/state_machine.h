@@ -182,6 +182,7 @@ public:
   void AddSize();
   void AddKid(StateMachine *sm);
   void AddData(ValueIdx*, Data *);
+  void AddHS(ValueIdx*, Data *);
   void AddPort(Port *);
   void AddVar(Variable *);
 	void AddInst(StateMachineInst *);
@@ -225,6 +226,7 @@ private:
 	std::vector<StateMachineInst *> inst;
 
   std::map<ValueIdx*, std::vector<Data *>> data;
+	std::map<ValueIdx*, std::vector<Data *>> hs_data;
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;

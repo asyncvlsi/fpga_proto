@@ -281,7 +281,7 @@ void StateMachine::PrintVerilog() {
 	int ef = 1;
 
   for (auto id : data) {
-		if (id.first) {
+	//	if (id.first) {
   	  fprintf(stdout, "always @(posedge \\clock )\n");
 			if (id.second[0]->GetType() == 0 && 
 						vm[id.first]->GetDimNum() < 1 ||
@@ -301,53 +301,33 @@ void StateMachine::PrintVerilog() {
   	    fprintf(stdout, " begin\n\t\\");
   	    dd->PrintVerilogAssignment();
   	    fprintf(stdout, "end\n");
-  	    if (dd->GetType() == 1 || dd->GetType() == 2) {
-  	      has_comm = 1;
-  	    }
 				ef = 0;
   	  }
-  	  fprintf(stdout, "\n");
-  	
-  	  if (has_comm) {
-  	    for (auto dd : id.second) {
-  	      if (dd->GetType() == 1 || dd->GetType() == 2) {
-  	        if (first == 0) {
-  	          dd->PrintVerilogHS(first);
-  	          first = 1;
-  	        }
-  	        dd->PrintVerilogCondition(ef);
-  	        dd->PrintVerilogHS(first);
-  	        first = 2;
-  	        dd->PrintVerilogConditionUP(ef);
-  	        dd->PrintVerilogHS(first);
-  	        first = 1;
-  	      }
-  	    }
-  	  }
 			ef = 1;
-  	  first = 0;
   	  fprintf(stdout, "\n");
-		} else {
-			for (auto dd : id.second) {
-				ef = 0;
-  	  	if (dd->GetType() == 1 || dd->GetType() == 2) {
-  	  	  if (first == 0) {
-  	  	    dd->PrintVerilogHS(first);
-  	  	    first = 1;
-  	  	  }
-  	  	  dd->PrintVerilogCondition(ef);
-  	  	  dd->PrintVerilogHS(first);
-  	  	  first = 2;
-  	  	  dd->PrintVerilogConditionUP(ef);
-  	  	  dd->PrintVerilogHS(first);
-  	  	  first = 1;
-  	  	}
-				first = 0;
-			}
-			ef = 1;
-			fprintf(stdout, "\n");
-		}
+	//	}
   }
+
+  for (auto id : hs_data) {
+		first = 0;
+		ef = 0;
+  	for (auto dd : id.second) {
+  	  if (dd->GetType() == 1 || dd->GetType() == 2) {
+  	    if (first == 0) {
+  	      dd->PrintVerilogHS(first);
+  	      first = 1;
+  	    }
+  	    dd->PrintVerilogCondition(ef);
+  	    dd->PrintVerilogHS(first);
+  	    first = 2;
+  	    dd->PrintVerilogConditionUP(ef);
+  	    dd->PrintVerilogHS(first);
+  	    first = 1;
+  	  }
+  	}
+		fprintf(stdout, "\n");
+	}
+
 
 	for (auto i : inst) {
 		i->PrintVerilog();

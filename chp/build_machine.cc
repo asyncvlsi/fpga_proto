@@ -1198,6 +1198,7 @@ Condition *traverse_chp(Process *proc,
     	  d = new Data (2, 0, 0, proc, tsm, exit_cond, 
 																			init_cond, chan_id, vex);
     	  tsm->AddData(chan_id->rootVx(scope), d);
+    	  tsm->AddHS(chan_id->rootVx(scope), d);
     	
     	  var_col.clear();
     	
@@ -1215,7 +1216,7 @@ Condition *traverse_chp(Process *proc,
 			}
 			d = new Data (2, 0, 0, proc, tsm, exit_cond,
 																		init_cond, chan_id, dex);
-			tsm->AddData(NULL, d);
+    	tsm->AddHS(chan_id->rootVx(scope), d);
 		}
 
 		//Return to initial state condition is when parent
@@ -1381,6 +1382,7 @@ Condition *traverse_chp(Process *proc,
 																			init_cond, var_id, chan_id);
     	
     	  tsm->AddData(var_id->rootVx(scope), d);
+				tsm->AddHS(chan_id->rootVx(scope), d);
     	}
 		} else {
 			ActId *did = NULL;
@@ -1398,7 +1400,7 @@ Condition *traverse_chp(Process *proc,
 			}
 			d = new Data(1, 0, 0, proc, tsm, exit_cond,
 																		init_cond, did, chan_id);
-			tsm->AddData(NULL, d);
+			tsm->AddHS(chan_id->rootVx(scope), d);
 		}
 
 		//Return to initial state condition is when parent
