@@ -360,7 +360,11 @@ Condition *traverse_chp(Process *proc,
 
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
-		  if (gg->g) {
+		  if (gg->g){
+				if (gg->g->type == E_FALSE) { 
+					empty_select = 1;
+					continue;
+				}
         if (gg->s && gg->s->type != ACT_CHP_SKIP &&
 										 gg->s->type != ACT_CHP_FUNC) {
 					empty_select = 0;
@@ -370,8 +374,14 @@ Condition *traverse_chp(Process *proc,
 					continue;
 				}
       } else {
-				empty_select = 1;
-				continue;
+		    if (gg->s && gg->s->type != ACT_CHP_SKIP &&
+										 gg->s->type != ACT_CHP_FUNC) {
+					empty_select = 0;
+					break;
+				} else {
+					empty_select = 1;
+					continue;
+				}
 			}
 		}	
 
@@ -431,11 +441,16 @@ Condition *traverse_chp(Process *proc,
     	    s->AddNextState(n);
 					sm->AddCondition(full_guard);
 
+	//				if (else_flag == 1) {
+	//					vc.push_back(full_guard);
+	//				}
+
+					Condition *tmp_cond = NULL;
 					if (pc) {
 						Comma *child_com = new Comma;
 						child_com->type = 0;
 						child_com->c.push_back(pc);
-						Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+						tmp_cond = new Condition(ss, sm->GetSN(), sm);
 						sm->AddCondition(tmp_cond);
 						child_com->c.push_back(tmp_cond);
 						child_cond = new Condition(child_com, sm->GetCCN(), sm);
@@ -446,9 +461,14 @@ Condition *traverse_chp(Process *proc,
 
     	    if (gg->s->type == ACT_CHP_COMMA) {
     	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+						sm->AddCondition(tmp);
 					} else if (gg->s->type == ACT_CHP_SKIP ||
 										 gg->s->type == ACT_CHP_FUNC ){
-						tmp = child_cond;
+						if (tmp_cond) {
+							tmp = tmp_cond;
+						} else {
+							tmp = child_cond;
+						}
     	    } else {
     	      StateMachine *csm = new StateMachine();
     	      csm->SetNumber(sm->GetKids());
@@ -492,7 +512,7 @@ Condition *traverse_chp(Process *proc,
     	term_com->c = vc;
     	Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
     	sm->AddCondition(term_cond);
-    	
+
 			//Return to the initial state when parent is not in 
 			//the right state
     	if (pc) {
@@ -511,6 +531,9 @@ Condition *traverse_chp(Process *proc,
 		} else {
 
 			vc.push_back(zero_s_cond);
+			if (pc) {
+				vc.push_back(pc);
+			}
     	Comma *term_com = new Comma;
     	term_com->type = 0;
     	term_com->c = vc;

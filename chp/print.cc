@@ -490,6 +490,9 @@ void State::PrintVerilog(int p) {
   if (printed) { return; }
   printed = 1;
   for (auto c : ns) {
+    c.first->PrintVerilog();
+  }
+  for (auto c : ns) {
     fprintf(stdout, "else if (");
     c.second->PrintVerilog(0);
     fprintf(stdout, ")\n\t");
@@ -498,10 +501,8 @@ void State::PrintVerilog(int p) {
     if (par) PrintParent(par,1);
     fprintf(stdout, "STATE_%i", c.first->GetNum());
     fprintf(stdout, ";\n");
-  for (auto c : ns) {
-    c.first->PrintVerilog();
-  }
-  }
+	}
+
 }
 
 /*
