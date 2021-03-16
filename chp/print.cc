@@ -667,11 +667,11 @@ void PrintExpression(Expr *e, StateMachine *scope) {
     case (E_BITFIELD):
 			unsigned int l;
 			unsigned int r;
-			r = e->u.e.r->u.e.r->u.v;
+			l = e->u.e.r->u.e.r->u.v;
 			if (e->u.e.r->u.e.l) {
-			  	l = e->u.e.r->u.e.l->u.v;
+			  	r = e->u.e.r->u.e.l->u.v;
                         } else {
-				l = r;
+				r = l;
 			}
 			fprintf(stdout, "\\");
 			((ActId *)e->u.e.l)->Print(stdout);
