@@ -1,5 +1,6 @@
 #include <act/state_machine.h>
 #include <act/act.h>
+#include <string>
 
 /*
     Since I have too many print functions I moved all of
@@ -647,8 +648,12 @@ void PrintExpression(Expr *e, StateMachine *scope) {
     case (E_BITFIELD):
 			unsigned int l;
 			unsigned int r;
-			l = (unsigned long) e->u.e.r->u.e.r;
-			r = (unsigned long) e->u.e.r->u.e.l;
+			l = e->u.e.r->u.e.r->u.v;
+			if (e->u.e.r->u.e.l) {
+			  	r = e->u.e.r->u.e.l->u.v;
+                        } else {
+				r = l;
+			}
 			fprintf(stdout, "\\");
 			((ActId *)e->u.e.l)->Print(stdout);
       fprintf(stdout, " [");
@@ -1053,7 +1058,7 @@ void Port::Print(){
 void Arbiter::PrintInst(int n) {
 
 	fprintf(stdout, "fair_hi (\n");
-	fprintf(stdout, "\t.WIDTH(%i)\n", a.size());
+	fprintf(stdout, "\t.WIDTH(%lu)\n", a.size());
 	fprintf(stdout, ") arb_%i (\n", n);
 	fprintf(stdout, "\t .\\clock (\\clock )\n");
 	fprintf(stdout, "\t,.\\reset (\\reset )\n");
