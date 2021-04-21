@@ -1120,12 +1120,12 @@ Condition *traverse_chp(Process *proc,
 		}
 
     std::vector<ActId *> var_col;
-    l = chp_lang->u.comm.rhs;
-		if (!list_isempty(l)) {
-    	for (li = list_first(l); li; li = list_next(li)) {
+    //l = chp_lang->u.comm.rhs;
+		if (chp_lang->u.comm.e) {
+    	//for (li = list_first(l); li; li = list_next(li)) {
     	
     	  Expr *vex = NULL;
-    	  vex = (Expr *)list_value(li);
+    	  vex = chp_lang->u.comm.e;//(Expr *)list_value(li);
     	  collect_vars(vex, var_col);
     	
 				Variable *nv;
@@ -1178,7 +1178,7 @@ Condition *traverse_chp(Process *proc,
     	
     	  var_col.clear();
     	
-    	}
+    	//}
 		} else {
 			Expr *dex = NULL;
 			char tmp1[1024];
@@ -1296,14 +1296,14 @@ Condition *traverse_chp(Process *proc,
 			tsm->AddVar(cv);
 		}
 
-    l = chp_lang->u.comm.rhs;
+    //l = chp_lang->u.comm.rhs;
 
-		if (!list_isempty(l)) {
-    	for (li = list_first(l); li; li = list_next(li)) {
+		if (chp_lang->u.comm.var) {
+    	//for (li = list_first(l); li; li = list_next(li)) {
     	
     	  ActId *var_id = NULL;
     	  act_connection *var_con = NULL;
-    	  var_id = (ActId *)list_value(li);
+    	  var_id = chp_lang->u.comm.var;//(ActId *)list_value(li);
 				ValueIdx *var_vx = var_id->rootVx(scope);
 				
     	  act_dynamic_var_t *dv;
@@ -1358,7 +1358,7 @@ Condition *traverse_chp(Process *proc,
 																			init_cond, var_id, chan_id);
     	
     	  tsm->AddData(var_id->rootVx(scope), d);
-    	}
+    	//}
 		} else {
 			ActId *did = NULL;
 			int found = 0;
