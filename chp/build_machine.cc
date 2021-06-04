@@ -1383,7 +1383,7 @@ Condition *traverse_chp(Process *proc,
     	
     	  tsm->AddData(var_id->rootVx(scope), d);
 				tsm->AddHS(chan_id->rootVx(scope), d);
-    	}
+    //	}
 		} else {
 			ActId *did = NULL;
 			int found = 0;
