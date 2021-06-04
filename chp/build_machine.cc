@@ -41,6 +41,7 @@ int is_declared (StateMachine *sm, ValueIdx *v) {
 //Function to walk through expression tree and collect
 //all variables for later analisys
 void collect_vars(Expr *e, std::vector<ActId *> &vars) {
+	fprintf(stdout, "%i\n", e->type);
   if (e->type == E_VAR) {
     ActId *id = (ActId *)e->u.e.l;
     vars.push_back(id);
@@ -48,6 +49,9 @@ void collect_vars(Expr *e, std::vector<ActId *> &vars) {
              e->type == E_REAL||
 						 e->type == E_BITFIELD) {
     return;
+	} else if (e->type == E_FUNCTION) {
+		fprintf(stdout, "sorry, no funcitons yet\n");
+		return;
   } else {
     if (e->u.e.l) {collect_vars(e->u.e.l, vars); }
 		if (e->type != E_COMPLEMENT) {
@@ -73,9 +77,7 @@ Condition *traverse_chp(Process *proc,
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   Condition *tmp;
-
   switch (chp_lang->type) {
-
   case ACT_CHP_COMMA: {
 
   	std::pair<State *, Condition *> n;
@@ -1149,7 +1151,10 @@ Condition *traverse_chp(Process *proc,
     	
     	  Expr *vex = NULL;
     	  vex = chp_lang->u.comm.e;//(Expr *)list_value(li);
-    	  collect_vars(vex, var_col);
+				if (vex) {
+	    	  collect_vars(vex, var_col);
+		fprintf(stdout, "JERE %u\n", chp_lang->type);
+				}
     	
 				Variable *nv;
     	  for (auto v : var_col) {
@@ -1200,7 +1205,7 @@ Condition *traverse_chp(Process *proc,
     	  tsm->AddData(chan_id->rootVx(scope), d);
     	  tsm->AddHS(chan_id->rootVx(scope), d);
     	
-    	  var_col.clear();
+    //	  var_col.clear();
     	
     	//}
 		} else {
