@@ -28,7 +28,7 @@ OBJS=main.o state_machine.o build_machine.o print.o data_path.o
 
 SRCS=$(OBJS:.o=.cc)
 
-include $(VLSI_TOOLS_SRC)/scripts/Makefile.std
+include $(ACT_HOME)/scripts/Makefile.std
 
 $(EXE): $(OBJS) $(ACTPASSDEPEND) $(TARGETINCS)
 	$(CXX) $(CFLAGS) $(OBJS) -o $(EXE) $(LIBACTPASS)

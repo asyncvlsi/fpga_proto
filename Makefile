@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------
 #
-#  Copyright (c) 2018 Rajit Manohar
+#  Copyright (c) 2021 Rajit Manohar
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -18,19 +18,7 @@
 #  Boston, MA  02110-1301, USA.
 #
 #-------------------------------------------------------------------------
-EXE=prs2fpga.$(EXT)
 
-TARGETS=$(EXE)
-TARGETINCS=graph.h fpga_config.h debug.h 
-TARGETINCSUBDIR=act
-
-OBJS=main.o build_graph.o arb.o timing.o print.o multidr.o read_config.o debug.o
-
-SRCS=$(OBJS:.o=.cc)
+SUBDIRS=chp prs
 
 include $(ACT_HOME)/scripts/Makefile.std
-
-$(EXE): $(OBJS) $(ACTPASSDEPEND) $(TARGETINCS)
-	$(CXX) $(CFLAGS) $(OBJS) -o $(EXE) $(LIBACTPASS)
-
--include Makefile.deps
