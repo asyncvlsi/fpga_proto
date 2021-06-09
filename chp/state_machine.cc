@@ -85,6 +85,7 @@ void StateMachine::AddVar(Variable *v_){
 	vm[v_->GetId()] = v_;
 }
 void StateMachine::AddData(ValueIdx* id, Data *dd) {data[id].push_back(dd);}
+void StateMachine::AddHS(ValueIdx* id, Data *dd) {hs_data[id].push_back(dd);}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
     commun_num++;

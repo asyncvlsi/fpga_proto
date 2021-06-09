@@ -41,6 +41,7 @@ int is_declared (StateMachine *sm, ValueIdx *v) {
 //Function to walk through expression tree and collect
 //all variables for later analisys
 void collect_vars(Expr *e, std::vector<ActId *> &vars) {
+	fprintf(stdout, "%i\n", e->type);
   if (e->type == E_VAR) {
     ActId *id = (ActId *)e->u.e.l;
     vars.push_back(id);
@@ -48,6 +49,9 @@ void collect_vars(Expr *e, std::vector<ActId *> &vars) {
              e->type == E_REAL||
 						 e->type == E_BITFIELD) {
     return;
+	} else if (e->type == E_FUNCTION) {
+		fprintf(stdout, "sorry, no funcitons yet\n");
+		return;
   } else {
     if (e->u.e.l) {collect_vars(e->u.e.l, vars); }
 		if (e->type != E_COMPLEMENT) {
@@ -73,9 +77,7 @@ Condition *traverse_chp(Process *proc,
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   Condition *tmp;
-
   switch (chp_lang->type) {
-
   case ACT_CHP_COMMA: {
 
   	std::pair<State *, Condition *> n;
@@ -360,7 +362,11 @@ Condition *traverse_chp(Process *proc,
 
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
-		  if (gg->g) {
+		  if (gg->g){
+				if (gg->g->type == E_FALSE) { 
+					empty_select = 1;
+					continue;
+				}
         if (gg->s && gg->s->type != ACT_CHP_SKIP &&
 										 gg->s->type != ACT_CHP_FUNC) {
 					empty_select = 0;
@@ -370,8 +376,14 @@ Condition *traverse_chp(Process *proc,
 					continue;
 				}
       } else {
-				empty_select = 1;
-				continue;
+		    if (gg->s && gg->s->type != ACT_CHP_SKIP &&
+										 gg->s->type != ACT_CHP_FUNC) {
+					empty_select = 0;
+					break;
+				} else {
+					empty_select = 1;
+					continue;
+				}
 			}
 		}	
 
@@ -431,11 +443,16 @@ Condition *traverse_chp(Process *proc,
     	    s->AddNextState(n);
 					sm->AddCondition(full_guard);
 
+	//				if (else_flag == 1) {
+	//					vc.push_back(full_guard);
+	//				}
+
+					Condition *tmp_cond = NULL;
 					if (pc) {
 						Comma *child_com = new Comma;
 						child_com->type = 0;
 						child_com->c.push_back(pc);
-						Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+						tmp_cond = new Condition(ss, sm->GetSN(), sm);
 						sm->AddCondition(tmp_cond);
 						child_com->c.push_back(tmp_cond);
 						child_cond = new Condition(child_com, sm->GetCCN(), sm);
@@ -446,9 +463,14 @@ Condition *traverse_chp(Process *proc,
 
     	    if (gg->s->type == ACT_CHP_COMMA) {
     	      tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+						sm->AddCondition(tmp);
 					} else if (gg->s->type == ACT_CHP_SKIP ||
 										 gg->s->type == ACT_CHP_FUNC ){
-						tmp = child_cond;
+						if (tmp_cond) {
+							tmp = tmp_cond;
+						} else {
+							tmp = child_cond;
+						}
     	    } else {
     	      StateMachine *csm = new StateMachine();
     	      csm->SetNumber(sm->GetKids());
@@ -492,7 +514,7 @@ Condition *traverse_chp(Process *proc,
     	term_com->c = vc;
     	Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
     	sm->AddCondition(term_cond);
-    	
+
 			//Return to the initial state when parent is not in 
 			//the right state
     	if (pc) {
@@ -511,6 +533,9 @@ Condition *traverse_chp(Process *proc,
 		} else {
 
 			vc.push_back(zero_s_cond);
+			if (pc) {
+				vc.push_back(pc);
+			}
     	Comma *term_com = new Comma;
     	term_com->type = 0;
     	term_com->c = vc;
@@ -1126,7 +1151,10 @@ Condition *traverse_chp(Process *proc,
     	
     	  Expr *vex = NULL;
     	  vex = chp_lang->u.comm.e;//(Expr *)list_value(li);
-    	  collect_vars(vex, var_col);
+				if (vex) {
+	    	  collect_vars(vex, var_col);
+		fprintf(stdout, "JERE %u\n", chp_lang->type);
+				}
     	
 				Variable *nv;
     	  for (auto v : var_col) {
@@ -1175,8 +1203,9 @@ Condition *traverse_chp(Process *proc,
     	  d = new Data (2, 0, 0, proc, tsm, exit_cond, 
 																			init_cond, chan_id, vex);
     	  tsm->AddData(chan_id->rootVx(scope), d);
+    	  tsm->AddHS(chan_id->rootVx(scope), d);
     	
-    	  var_col.clear();
+    //	  var_col.clear();
     	
     	//}
 		} else {
@@ -1192,7 +1221,7 @@ Condition *traverse_chp(Process *proc,
 			}
 			d = new Data (2, 0, 0, proc, tsm, exit_cond,
 																		init_cond, chan_id, dex);
-			tsm->AddData(NULL, d);
+    	tsm->AddHS(chan_id->rootVx(scope), d);
 		}
 
 		//Return to initial state condition is when parent
@@ -1358,7 +1387,8 @@ Condition *traverse_chp(Process *proc,
 																			init_cond, var_id, chan_id);
     	
     	  tsm->AddData(var_id->rootVx(scope), d);
-    	//}
+				tsm->AddHS(chan_id->rootVx(scope), d);
+    //	}
 		} else {
 			ActId *did = NULL;
 			int found = 0;
@@ -1375,7 +1405,7 @@ Condition *traverse_chp(Process *proc,
 			}
 			d = new Data(1, 0, 0, proc, tsm, exit_cond,
 																		init_cond, did, chan_id);
-			tsm->AddData(NULL, d);
+			tsm->AddHS(chan_id->rootVx(scope), d);
 		}
 
 		//Return to initial state condition is when parent
