@@ -552,7 +552,7 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       PrintExpression(e->u.e.l, scope);
       break;
     case (E_INT):
-      fprintf(stdout, "32'd%u", e->u.v);
+      fprintf(stdout, "32'd%lu", e->u.v);
       break;
     case (E_VAR):
       ActId *id;
@@ -670,7 +670,7 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       PrintExpression(e->u.e.l, scope);
       break;
     case (E_REAL):
-      fprintf(stdout, "%i", e->u.v);
+      fprintf(stdout, "%ld", e->u.v);
       break;
     case (E_RAWFREE):
 			fprintf(stdout, "RAWFREE\n");
