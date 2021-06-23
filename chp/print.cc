@@ -671,7 +671,7 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       PrintExpression(e->u.e.l, scope);
       break;
     case (E_REAL):
-      fprintf(stdout, "%lu", e->u.v);
+      fprintf(stdout, "%ld", e->u.v);
       break;
 		case (E_ANDLOOP):
 			fprintf(stdout, "ANDLOOP you mean?\n");
