@@ -10,28 +10,42 @@ static ActBooleanizePass *BOOL = NULL;
 //or not.
 //0 - not declared
 //1 - declared as variable
-//2 - declared as port
+//2 - declared as port output
 //3 - declared as instance port input
 //4 - declared as instance port output
-int is_declared (StateMachine *sm, ValueIdx *v) {
-  std::vector<Variable *> vv;
-  vv = sm->GetVars();
-  for (auto iv : vv) {
-    if (iv->GetId() == v) { return 1; }
-  }
+//5 - declared as port input
+int is_declared (StateMachine *sm, act_connection *v) {
+
   std::vector<Port *> vp;
   vp = sm->GetPorts();
   for (auto iv : vp) {
-    if (iv->GetCon() == v->connection()) { return 2; }
+    if (v == iv->GetCon()) {
+			if (iv->GetDir() == 0) {
+				return 2;
+			} else {
+				return 5;
+			}
+		}
   }
+
+  std::vector<Variable *> vv;
+  vv = sm->GetVars();
+  for (auto iv : vv) {
+    if (iv->GetCon() == v) {
+			return 1;
+		}
+  }
+
   std::vector<StateMachineInst *> iv;
 	iv = sm->GetInst();
 	for (auto in : iv) {
 		for (auto ip : in->GetPorts()) {
-			if (ip->GetCon() == v->connection() && ip->GetDir() == 1) {
-				return 3;
-			} else if (ip->GetCon() == v->connection() && ip->GetDir() == 0) {
-				return 4;
+    	if (v == ip->GetCon()) {
+				if (ip->GetDir() == 1) {
+					return 3;
+				} else {
+					return 4;
+				}
 			}
 		}
 	}
@@ -41,7 +55,6 @@ int is_declared (StateMachine *sm, ValueIdx *v) {
 //Function to walk through expression tree and collect
 //all variables for later analisys
 void collect_vars(Expr *e, std::vector<ActId *> &vars) {
-	fprintf(stdout, "%i\n", e->type);
   if (e->type == E_VAR) {
     ActId *id = (ActId *)e->u.e.l;
     vars.push_back(id);
@@ -957,46 +970,20 @@ Condition *traverse_chp(Process *proc,
     act_dynamic_var_t *dv;
     act_connection *var_con;
   	Variable *nv;
-		if (var_id->isDynamicDeref() == 1) {
-			var_con = var_id->rootVx(scope)->connection();
-			hb = ihash_lookup(bnl->cdH, (long)var_con);
-			dv = (act_dynamic_var_t *)hb->v;
-			var_w = dv->width;
-			if (is_declared(tsm, var_vx) == 0) {
-				nv = new Variable(0, 0, var_vx);
-				nv->AddDimension(var_w-1);
-				for (auto i = 0; i < dv->a->nDims(); i++) {
-					int dim_size = dv->a->range_size(i);
-					nv->AddDimension(dim_size-1);
-					var_dims++;
-				}
-				tsm->AddVar(nv);
-			}
-		} else {
-			var_con = var_id->Canonical(scope);
-  		hb = ihash_lookup(bnl->cH, (long)var_con);
-  		bv = (act_booleanized_var_t *)hb->v;
- 			var_w = bv->width;
 
-  		if (is_declared(tsm, var_vx) == 0) {
-  		  nv = new Variable(0, 0, var_vx);
-				nv->AddDimension(var_w-1);
-				if (var_id->arrayInfo()) {
-					Array *var_a = var_id->arrayInfo();
-					InstType *it = scope->FullLookup(var_id, &var_a);
-					var_a = it->arrayInfo();
-					for (auto i = 0; i < var_a->nDims(); i++) {
-						int dim_size = var_a->range_size(i);
-						nv->AddDimension(dim_size-1);
-						var_dims++;
-					}
-				}
-  			tsm->AddVar(nv);
-  		}
-		}
+		var_con = var_id->Canonical(scope);
+  	hb = ihash_lookup(bnl->cH, (long)var_con);
+  	bv = (act_booleanized_var_t *)hb->v;
+ 		var_w = bv->width;
+
+  	if (is_declared(tsm, var_con) == 0) {
+  	  nv = new Variable(0, 0, var_vx, var_con);
+			nv->AddDimension(var_w-1);
+  		tsm->AddVar(nv);
+  	}
 
     d = new Data(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
-    tsm->AddData(var_id->rootVx(scope), d);
+    tsm->AddData(var_con, d);
 
     std::vector<ActId *> var_col;
     collect_vars(e, var_col);
@@ -1004,47 +991,30 @@ Condition *traverse_chp(Process *proc,
 			var_dims = 0;
 			ValueIdx *evar_vx = v->rootVx(scope);
 	    act_connection *evar_con;
-			if (v->isDynamicDeref() == 1) {
-				evar_con = v->rootVx(scope)->connection();
-				hb = ihash_lookup(bnl->cdH, (long)evar_con);
-				dv = (act_dynamic_var_t *)hb->v;
-				var_w = dv->width;
-				if (is_declared(tsm, evar_vx) == 0) {
-					nv = new Variable(0,0,evar_vx);
-					nv->AddDimension(var_w-1);
-					for(auto i = 0; i < dv->a->nDims(); i++) {
-						int dim_size = dv->a->range_size(i);
+	    evar_con = v->Canonical(scope);
+			hb = ihash_lookup(bnl->cH, (long)evar_con);
+			bv = (act_booleanized_var_t *)hb->v;
+
+			int decl_type = is_declared(tsm, evar_con);
+			int var_veri_type = decl_type == 0 ? 0 : 1;
+			
+			if (decl_type == 0 || decl_type == 3) {
+				var_w = bv->width;
+				nv = new Variable (var_veri_type, 0, evar_vx,evar_con);
+				nv->AddDimension(var_w-1);
+				if (v->arrayInfo()) {
+					Array *var_a = v->arrayInfo();
+					InstType *it = scope->FullLookup(v, &var_a);
+					var_a = it->arrayInfo();
+					for (auto i = 0; i < var_a->nDims(); i++) {
+						int dim_size = var_a->range_size(i);
 						nv->AddDimension(dim_size-1);
 						var_dims++;
 					}
-					tsm->AddVar(nv);
 				}
-			} else {
-	      evar_con = v->Canonical(scope);
-				hb = ihash_lookup(bnl->cH, (long)evar_con);
-				bv = (act_booleanized_var_t *)hb->v;
-
-				int decl_type = is_declared(tsm, evar_vx);
-				int var_veri_type = decl_type == 0 ? 0 : 1;
-				
-				if (decl_type == 0 || decl_type == 3) {
-					var_w = bv->width;
-					nv = new Variable (var_veri_type, 0, evar_vx);
-					nv->AddDimension(var_w-1);
-					if (v->arrayInfo()) {
-						Array *var_a = v->arrayInfo();
-						InstType *it = scope->FullLookup(v, &var_a);
-						var_a = it->arrayInfo();
-						for (auto i = 0; i < var_a->nDims(); i++) {
-							int dim_size = var_a->range_size(i);
-							nv->AddDimension(dim_size-1);
-							var_dims++;
-						}
-					}
-					tsm->AddVar(nv);
-				}
+				tsm->AddVar(nv);
 			}
-    }
+		}
 
 		//Return condition
    	if (pc) {
@@ -1139,75 +1109,51 @@ Condition *traverse_chp(Process *proc,
     bv = (act_booleanized_var_t *)hb->v;
     chan_w = bv->width;
 
-		if (is_declared(tsm, chan_vx) == 3) {
-			Variable *cv = new Variable(0, chan_w-1, chan_vx);
+		Variable *cv;
+		if (is_declared(tsm, chan_con) == 3) {
+			cv = new Variable(0, chan_w-1, chan_vx, chan_con);
+			tsm->AddVar(cv);
+		} else if (is_declared(tsm, chan_con) == 2 ||
+								is_declared(tsm, chan_con) == 5) {
+			cv = new Variable(0, chan_w-1, 1, chan_vx, chan_con);
 			tsm->AddVar(cv);
 		}
 
     std::vector<ActId *> var_col;
-    //l = chp_lang->u.comm.rhs;
 		if (chp_lang->u.comm.e) {
-    	//for (li = list_first(l); li; li = list_next(li)) {
     	
     	  Expr *vex = NULL;
-    	  vex = chp_lang->u.comm.e;//(Expr *)list_value(li);
+    	  vex = chp_lang->u.comm.e;
 				if (vex) {
 	    	  collect_vars(vex, var_col);
-		fprintf(stdout, "JERE %u\n", chp_lang->type);
 				}
     	
 				Variable *nv;
     	  for (auto v : var_col) {
 					int var_w = 0;
 					ValueIdx *evar_vx = v->rootVx(scope);
-					if (v->isDynamicDeref() == 1) {
-    	    	act_connection *evar_con = evar_vx->connection();
-						hb = ihash_lookup(bnl->cdH, (long)evar_con);
-						dv = (act_dynamic_var_t *)hb->v;
-						var_w = dv->width;
-						if (is_declared(tsm, evar_vx) == 0) {
-							nv = new Variable(0,0,evar_vx);
-							nv->AddDimension(var_w-1);
-							for (auto i = 0; i < dv->a->nDims(); i++) {
-								int dim_size = dv->a->range_size(i);
-								nv->AddDimension(dim_size-1);
-							}
-							tsm->AddVar(nv);
-						}
-					} else {
-    	    	act_connection *evar_con = v->Canonical(scope);
-    	    	hb = ihash_lookup(bnl->cH, (long)evar_con);
-    	    	bv = (act_booleanized_var_t *)hb->v;
+
+    	    act_connection *evar_con = v->Canonical(scope);
+    	    hb = ihash_lookup(bnl->cH, (long)evar_con);
+    	    bv = (act_booleanized_var_t *)hb->v;
     	    
-						int decl_type = is_declared(tsm,evar_vx);
-						int var_veri_type = decl_type == 0 ? 1 : 0;
+					int decl_type = is_declared(tsm,evar_con);
+					int var_veri_type = decl_type == 0 ? 1 : 0;
     	    
-						if (decl_type == 0 || decl_type == 4) {
-							var_w = bv->width;
-							nv = new Variable(var_veri_type, 0, evar_vx);
-							nv->AddDimension(var_w-1);
-							if (v->arrayInfo()) {
-								Array *var_a = v->arrayInfo();
-								InstType *it = scope->FullLookup(v, &var_a);
-								var_a = it->arrayInfo();
-								for (auto i = 0; i < var_a->nDims(); i++) {
-									int dim_size = var_a->range_size(i);
-									nv->AddDimension(dim_size);
-								}
-							}
-							tsm->AddVar(nv);
-						}
+					if (decl_type == 0 || decl_type == 4) {
+						var_w = bv->width;
+						nv = new Variable(var_veri_type, 0, evar_vx, 
+																evar_con);
+						nv->AddDimension(var_w-1);
+						tsm->AddVar(nv);
 					}
     	  }
     	
     	  d = new Data (2, 0, 0, proc, tsm, exit_cond, 
 																			init_cond, chan_id, vex);
-    	  tsm->AddData(chan_id->rootVx(scope), d);
-    	  tsm->AddHS(chan_id->rootVx(scope), d);
+    	  tsm->AddData(chan_con, d);
+    	  tsm->AddHS(chan_con, d);
     	
-    //	  var_col.clear();
-    	
-    	//}
 		} else {
 			Expr *dex = NULL;
 			char tmp1[1024];
@@ -1221,7 +1167,7 @@ Condition *traverse_chp(Process *proc,
 			}
 			d = new Data (2, 0, 0, proc, tsm, exit_cond,
 																		init_cond, chan_id, dex);
-    	tsm->AddHS(chan_id->rootVx(scope), d);
+    	tsm->AddHS(chan_con, d);
 		}
 
 		//Return to initial state condition is when parent
@@ -1320,75 +1266,44 @@ Condition *traverse_chp(Process *proc,
     bv = (act_booleanized_var_t *)hb->v;
     chan_w = bv->width;
 
-		if (is_declared(tsm, chan_vx) == 4) {
-			Variable *cv = new Variable(1, chan_w-1, chan_vx);
+		if (is_declared(tsm, chan_con) == 4) {
+			Variable *cv = new Variable(1, chan_w-1, chan_vx,chan_con);
 			tsm->AddVar(cv);
 		}
 
-    //l = chp_lang->u.comm.rhs;
-
 		if (chp_lang->u.comm.var) {
-    	//for (li = list_first(l); li; li = list_next(li)) {
+    	ActId *var_id = NULL;
+    	act_connection *var_con = NULL;
+    	var_id = chp_lang->u.comm.var;
+			ValueIdx *var_vx = var_id->rootVx(scope);
+			
+    	act_dynamic_var_t *dv;
+    	act_booleanized_var_t *bv;
     	
-    	  ActId *var_id = NULL;
-    	  act_connection *var_con = NULL;
-    	  var_id = chp_lang->u.comm.var;//(ActId *)list_value(li);
-				ValueIdx *var_vx = var_id->rootVx(scope);
-				
-    	  act_dynamic_var_t *dv;
-    	  act_booleanized_var_t *bv;
+			int var_w = 0;
+    
+			Variable *nv = NULL;
+    	var_con = var_id->Canonical(scope);
+	  	hb = ihash_lookup(bnl->cH, (long)var_con);
+    	bv = (act_booleanized_var_t *)hb->v;
+    
+			int decl_type = is_declared(tsm,var_con);
+			int var_veri_type = decl_type == 0 ? 0 : 1;
     	
-				int var_w = 0;
+			if (decl_type == 0 || decl_type == 3) {
+    		var_w = bv->width;
+    		nv = new Variable(0, var_veri_type, var_vx, var_con);
+				nv->AddDimension(var_w-1);
+				tsm->AddVar(nv);
+			}
     	
-    	  Variable *nv = NULL;
-				if (var_id->isDynamicDeref() == 1) {
-    	  	var_con = var_vx->connection();
-	  	    hb = ihash_lookup(bnl->cdH, (long)var_con);
-    	  	dv = (act_dynamic_var_t *)hb->v;
-					var_w = dv->width;
+			//Add data type as receive is basically assignment
+			//to the variable
+    	d = new Data (1, 0, 0, proc, tsm, exit_cond, 
+																		init_cond, var_id, chan_id);
     	
-					if (is_declared(tsm, var_vx) == 0) {
-						nv = new Variable(0,0,var_vx);
-						nv->AddDimension(var_w-1);
-						for (auto i = 0; i < dv->a->nDims(); i++) {
-							int dim_size = dv->a->range_size(0);
-							nv->AddDimension(dim_size-1);
-						}
-						tsm->AddVar(nv);
-					}
-				} else {
-    	  	var_con = var_id->Canonical(scope);
-	  	    hb = ihash_lookup(bnl->cH, (long)var_con);
-    	  	bv = (act_booleanized_var_t *)hb->v;
-    	
-					int decl_type = is_declared(tsm,var_vx);
-					int var_veri_type = decl_type == 0 ? 0 : 1;
-    	
-					if (decl_type == 0 || decl_type == 3) {
-    	  		var_w = bv->width;
-    	  		nv = new Variable(0, var_veri_type, var_vx);
-						nv->AddDimension(var_w-1);
-						if (var_id->arrayInfo()) {
-							Array *var_a = var_id->arrayInfo();
-							InstType *it = scope->FullLookup(var_id, &var_a);
-							var_a = it->arrayInfo();
-							for (auto i = 0; i < var_a->nDims(); i++) {
-								int dim_size = var_a->range_size(i);
-								nv->AddDimension(dim_size-1);
-							}
-						}
-						tsm->AddVar(nv);
-					}
-				}
-    	
-				//Add data type as receive is basically assignment
-				//to the variable
-    	  d = new Data (1, 0, 0, proc, tsm, exit_cond, 
-																			init_cond, var_id, chan_id);
-    	
-    	  tsm->AddData(var_id->rootVx(scope), d);
-				tsm->AddHS(chan_id->rootVx(scope), d);
-    //	}
+    	tsm->AddData(var_con, d);
+			tsm->AddHS(chan_con, d);
 		} else {
 			ActId *did = NULL;
 			int found = 0;
@@ -1405,7 +1320,7 @@ Condition *traverse_chp(Process *proc,
 			}
 			d = new Data(1, 0, 0, proc, tsm, exit_cond,
 																		init_cond, did, chan_id);
-			tsm->AddHS(chan_id->rootVx(scope), d);
+			tsm->AddHS(chan_con, d);
 		}
 
 		//Return to initial state condition is when parent
@@ -1459,14 +1374,20 @@ Condition *traverse_chp(Process *proc,
 
 //Adding process ports
 void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
+	ActId *tmp_id;
+	ValueIdx *tmp_v;
   act_connection *tmp_c;
   unsigned int tmp_d = 0;
   unsigned int tmp_w = 0;
   unsigned int chan = 0;
   ihash_bucket *hb;
+	int reg = 1;
   for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
     if (bnl->chpports[i].omit) { continue; }
-    tmp_c = bnl->chpports[i].c->toid()->Canonical(cs);
+		reg = 1;
+		tmp_id = bnl->chpports[i].c->toid();
+		tmp_v = tmp_id->rootVx(cs);
+    tmp_c = tmp_id->Canonical(cs);
     tmp_d = bnl->chpports[i].input;
 
     hb = ihash_lookup(bnl->cH, (long)tmp_c);
@@ -1476,17 +1397,37 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     tmp_w = bv->width;
     chan = bv->ischan;
 
-    Port *p = new Port(tmp_d, tmp_w, chan, tmp_c);
+		for (auto in : sm->GetInst()){
+			for (auto pp : in->GetPorts()) {
+				if (pp->GetVx() == tmp_v) {
+					reg = 0;
+					break;
+				}
+			}
+		}
+
+    Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
     sm->AddPort(p);
   }
   for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
-    bnl->used_globals[i]->toid()->Canonical(cs)->toid()->Print(stdout);
-    tmp_c = bnl->used_globals[i]->toid()->Canonical(cs);
+		tmp_id = bnl->used_globals[i]->toid();
+		tmp_v = tmp_id->rootVx(cs);
+    tmp_c = tmp_id->Canonical(cs);
     tmp_d = 1;
     tmp_w = 1;
-    Port *p = new Port(tmp_d, tmp_w, 0, tmp_c);
+
+		reg = 1;
+		for (auto in : sm->GetInst()){
+			for (auto pp : in->GetPorts()) {
+				if (pp->GetVx() == tmp_v) {
+					reg = 0;
+					break;
+				}
+			}
+		}
+
+    Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
     sm->AddPort(p);
-    fprintf(stdout, "\n");
   }
 }
 
@@ -1544,7 +1485,8 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 						for (auto j = 0; j < A_LEN(sub->chpports); j++){
 							if (sub->chpports[j].omit) { continue; }
 							act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-							
+							ValueIdx *vv = c->toid()->rootVx(cs);						
+
 							ihash_bucket *hb;
 							hb = ihash_lookup(bnl->cH, (long)c);
 							act_booleanized_var_t *bv;
@@ -1554,7 +1496,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 							int width = bv->width;
 							int ischan = bv->ischan;
 							
-							Port *ip = new Port(dir,width,ischan,c);
+							Port *ip = new Port(dir,width,ischan,0,vv, c);
 							ip->SetInst();
 							ports.push_back(ip);
 							iport++;
@@ -1570,6 +1512,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 					for (auto j = 0; j < A_LEN(sub->chpports); j++){
 						if (sub->chpports[j].omit) { continue; }
 						act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+						ValueIdx *vv = c->toid()->rootVx(cs);
 						
 						ihash_bucket *hb;
 						hb = ihash_lookup(bnl->cH, (long)c);
@@ -1580,7 +1523,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 						int width = bv->width;
 						int ischan = bv->ischan;
 						
-						Port *ip = new Port(dir,width,ischan,c);
+						Port *ip = new Port(dir,width,ischan,0,vv,c);
 						ip->SetInst();
 						ports.push_back(ip);
 						iport++;
@@ -1591,6 +1534,31 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 			}
 		}
 	}
+}
+
+//Function to find instance to instance connections
+//which need to be declared
+void inst_to_inst_con_decl(Scope *cs, StateMachine *sm) {
+
+	act_boolean_netlist_t *bnl = BOOL->getBNL(sm->GetProc());
+
+	for (auto iv : sm->GetInst()) {
+		for (auto ip : iv->GetPorts()) {
+			int decl_type = is_declared(sm, ip->GetCon());
+			if (decl_type == 0 || decl_type == 3 || decl_type == 4) {
+				act_connection *var_con = ip->GetCon();
+				ValueIdx *var_vx = var_con->toid()->rootVx(cs);
+				ihash_bucket *hb = ihash_lookup(bnl->cH, (long)var_con);
+				act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
+				int var_w = bv->width;
+				int var_chan = bv->ischan;
+				Variable *nv = new Variable(1, var_chan, 0, var_vx, var_con);
+				nv->AddDimension(var_w-1);
+				sm->AddVar(nv);
+			}
+		}
+	}
+
 }
 
 //Function to traverse act data strcutures and walk
@@ -1644,16 +1612,19 @@ void traverse_act (Process *p, CHPProject *cp) {
   sm->SetProcess(p);
   sm->SetNumber(0);
 
-  //add ports
-  add_ports(cs, bnl, sm);
-
 	//add instances
 	add_instances(cs, bnl, sm);
+
+  //add ports
+  add_ports(cs, bnl, sm);
 
   //run chp traverse to build state machine
 	if (chp_lang) {
 	  traverse_chp(p, chp_lang, sm, sm, NULL);
 	}
+
+	//add interconnections
+	inst_to_inst_con_decl(cs, sm);
 
   //append linked list of chp project
   //processes

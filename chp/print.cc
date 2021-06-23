@@ -122,7 +122,9 @@ void StateMachine::PrintPlain() {
 
 void StateMachine::PrintVerilogVars() {
   for (auto v : vars) {
-    v->PrintVerilog();
+		if (v->IsPort() == 0) {
+			v->PrintVerilog();
+		}
   }
   fprintf(stdout, "\n");
 }
@@ -136,6 +138,11 @@ void StateMachine::PrintVerilogWires(){
     fprintf(stdout, "wire ");
     cc->PrintVerilog(0);
     fprintf(stdout, ";\n");
+		if (cc->GetType() == 4) {
+			fprintf(stdout, "wire ");
+			cc->PrintVerilog(2);
+			fprintf(stdout, ";\n");
+		}
   }
   for (auto cc : state_condition) {
     fprintf(stdout, "wire ");
@@ -169,11 +176,9 @@ void StateMachine::PrintVerilogHeader() {
     fprintf(stdout, ");\n\n");
   }
 
-	if (top) {
-  	PrintVerilogWires();
-  	PrintVerilogVars();
-  	PrintVerilogParameters();
-	}
+  PrintVerilogWires();
+  PrintVerilogVars();
+  PrintVerilogParameters();
   fprintf(stdout, "\n");
 
 }
@@ -282,31 +287,26 @@ void StateMachine::PrintVerilog() {
 	int ef = 1;
 
   for (auto id : data) {
-	//	if (id.first) {
-  	  fprintf(stdout, "always @(posedge \\clock )\n");
-			if (id.second[0]->GetType() == 0 && 
-						vm[id.first]->GetDimNum() < 1 ||
-					id.second[0]->GetType() != 0) {
-  	 		fprintf(stdout, "if (\\reset ) begin\n\t\\");
-		 		fprintf(stdout, "%s", id.first->getName());
-  	 		fprintf(stdout, " <= 0;\n");
-  	 		fprintf(stdout, "end\n");
-		 		ef = 0;
+    fprintf(stdout, "always @(posedge \\clock )\n");
+   	fprintf(stdout, "if (\\reset ) begin\n");
+		fprintf(stdout, "\t\\");
+		id.first->toid()->Print(stdout);
+  	fprintf(stdout, " <= 0;\n");
+   	fprintf(stdout, "end\n");
+	 	ef = 0;
+    for (auto dd : id.second) {
+			if (dd->GetType() != 2) {
+	      dd->PrintVerilogCondition(ef);
+			} else {
+				dd->PrintVerilogConditionUP(ef);
 			}
-  	  for (auto dd : id.second) {
-				if (dd->GetType() != 2) {
-		      dd->PrintVerilogCondition(ef);
-				} else {
-					dd->PrintVerilogConditionUP(ef);
-				}
-  	    fprintf(stdout, " begin\n\t\\");
-  	    dd->PrintVerilogAssignment();
-  	    fprintf(stdout, "end\n");
-				ef = 0;
-  	  }
-			ef = 1;
-  	  fprintf(stdout, "\n");
-	//	}
+      fprintf(stdout, " begin\n");
+      dd->PrintVerilogAssignment();
+      fprintf(stdout, "end\n");
+			ef = 0;
+    }
+		ef = 1;
+    fprintf(stdout, "\n");
   }
 
   for (auto id : hs_data) {
@@ -552,12 +552,13 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       PrintExpression(e->u.e.l, scope);
       break;
     case (E_INT):
-      fprintf(stdout, "32'd%u", e->u.v);
+      fprintf(stdout, "32'd%lu", e->u.v);
       break;
     case (E_VAR):
       ActId *id;
       id = (ActId *)e->u.e.l;
-			fprintf(stdout, "\\%s", print_array_ref(id).c_str());
+			fprintf(stdout, "\\");
+			id->Print(stdout);
       break;
     case (E_QUERY):
 			PrintExpression(e->u.e.l, scope);
@@ -650,8 +651,8 @@ void PrintExpression(Expr *e, StateMachine *scope) {
 			unsigned int r;
 			l = e->u.e.r->u.e.r->u.v;
 			if (e->u.e.r->u.e.l) {
-			  	r = e->u.e.r->u.e.l->u.v;
-                        } else {
+				r = e->u.e.r->u.e.l->u.v;
+      } else {
 				r = l;
 			}
 			fprintf(stdout, "\\");
@@ -670,8 +671,20 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       PrintExpression(e->u.e.l, scope);
       break;
     case (E_REAL):
-      fprintf(stdout, "%i", e->u.v);
+      fprintf(stdout, "%lu", e->u.v);
       break;
+		case (E_ANDLOOP):
+			fprintf(stdout, "ANDLOOP you mean?\n");
+			break;
+		case (E_ORLOOP):
+			fprintf(stdout, "ORLOOP you mean?\n");
+			break;
+		case (E_BUILTIN_INT):
+			PrintExpression(e->u.e.l, scope);
+			break;
+		case (E_BUILTIN_BOOL):
+			PrintExpression(e->u.e.l, scope);
+			break;
     case (E_RAWFREE):
 			fprintf(stdout, "RAWFREE\n");
       break;
@@ -797,11 +810,11 @@ void Condition::PrintVerilog(int f){
     switch (type) {
       case (0) :
         PrintScope(scope);
-        fprintf(stdout, "commu_compl_%i = ", num);
+        fprintf(stdout, "commu_compl_%i = \\", num);
         u.v->Print(stdout);
-        fprintf(stdout, "_valid & ");
+        fprintf(stdout, "_valid & \\");
         u.v->Print(stdout);
-        fprintf(stdout, "_ready");
+        fprintf(stdout, "_ready ");
         break;
       case (1) :
         PrintScope(scope);
@@ -928,27 +941,24 @@ void Data::PrintVerilogVar() {
 void Data::PrintVerilogAssignment() {
   if (printed) {return;}
   printed = 1;
+	fprintf(stdout, "\t\\");
+	id->Print(stdout);
+	fprintf(stdout, " <= ");
   if (type == 0) {
-		std::string cid = print_array_ref(id);
-		fprintf(stdout, "%s", cid.c_str());
-    fprintf(stdout, " <= ");
 		if (u.assign.e->type == 29) {
 			fprintf(stdout, "{");
 		}
     PrintExpression(u.assign.e, scope);
-    fprintf(stdout, " ;\n");
   } else if (type == 1) {
-    id->Print(stdout);
-    fprintf(stdout, " <= \\");
+		fprintf(stdout, "\\");
     u.recv.chan->Print(stdout);
-    fprintf(stdout, " ;\n");
   } else if (type == 2) {
-    id->Print(stdout);
-    fprintf(stdout, " <= ");
+		if (u.send.se->type == 29) {
+			fprintf(stdout, "{");
+		}
     PrintExpression(u.send.se, scope);
-    fprintf(stdout, " ;\n");
   }
- 
+	fprintf(stdout, " ;\n");
 }
 
 void Data::PrintVerilogCondition(int f){
@@ -987,42 +997,61 @@ void Variable::PrintVerilog (){
   fprintf(stdout, "[%i:0]\t", dim[0]);
 
 	fprintf(stdout, "\\");
-	fprintf(stdout, "%s ", vx->getName());
+	id->toid()->Print(stdout);
 	for (auto i = 1; i < dim.size(); i++) {
     fprintf(stdout, "[%i:0]", dim[i]);
 	}
   fprintf(stdout, " ;\n");
 
-	if (ischan == 1) {
+	ActId *tmp_id = id->toid();
+	if (ischan == 1 && isport == 1) {
 		if (type == 0) {
 			fprintf(stdout, "reg\t\\");
-			fprintf(stdout, "%s", vx->getName());
-			fprintf(stdout, "_valid ;\n");
-			fprintf(stdout, "wire\t\\");
-			fprintf(stdout, "%s", vx->getName());
-			fprintf(stdout, "_ready ;\n");
 		} else {
 			fprintf(stdout, "wire\t\\");
-			fprintf(stdout, "%s", vx->getName());
-			fprintf(stdout, "_valid ;\n");
-			fprintf(stdout, "reg\t\\");
-			fprintf(stdout, "%s", vx->getName());
-			fprintf(stdout, "_ready ;\n");
 		}
+		tmp_id->Print(stdout);
+		fprintf(stdout, "_valid ;\n");
+		if (type == 0) {
+			fprintf(stdout, "wire\t\\");
+		} else {
+			fprintf(stdout, "reg\t\\");
+		}
+		tmp_id->Print(stdout);
+		fprintf(stdout, "_ready ;\n");
+	} else if (ischan == 1 && isport == 0) {
+		fprintf(stdout, "wire\t\\");
+		tmp_id->Print(stdout);
+		fprintf(stdout, "_valid ;\n");
+		fprintf(stdout, "wire\t\\");
+		tmp_id->Print(stdout);
+		fprintf(stdout, "_ready ;\n");
+
 	}
+	delete tmp_id;
 }
 
 /*
  *	Port Class
  */
-void Port::PrintName(){
-	connection->toid()->Print(stdout);
+void Port::PrintName(int func){
+	if (func == 0) {
+		connection->toid()->Print(stdout);
+	} else {
+		std::string cid = print_array_ref (connection->toid());
+		fprintf(stdout, "%s", cid.c_str());
+	}
 }
 
 void Port::Print(){
   if (dir == 0) {
     if (ischan != 0) {
-      fprintf(stdout, "\t,output reg\t\\");
+      fprintf(stdout, "\t,output ");
+			if (reg) {
+				fprintf(stdout, "reg\t\\");
+			} else {
+				fprintf(stdout, "\t\\");
+			}
       connection->toid()->Print(stdout);
       fprintf(stdout, "_valid\n");
       fprintf(stdout, "\t,input     \t\\");
@@ -1030,11 +1059,21 @@ void Port::Print(){
       fprintf(stdout, "_ready\n");
     }
 		if (ischan != 2) {
-    	fprintf(stdout, "\t,output reg\t");
+    	fprintf(stdout, "\t,output ");
+			if (reg) {
+				fprintf(stdout, "reg\t");
+			} else {
+				fprintf(stdout, "\t");
+			}
 		}
   } else {
     if (ischan != 0)  {
-      fprintf(stdout, "\t,output reg\t\\");
+      fprintf(stdout, "\t,output ");
+			if (reg) {
+      	fprintf(stdout, "reg\t\\");
+			} else {
+      	fprintf(stdout, "\t\\");
+			}
       connection->toid()->Print(stdout);
       fprintf(stdout, "_ready\n");
       fprintf(stdout, "\t,input     \t\\");
@@ -1057,7 +1096,7 @@ void Port::Print(){
 
 void Arbiter::PrintInst(int n) {
 
-	fprintf(stdout, "fair_hi (\n");
+	fprintf(stdout, "fair_hi #(\n");
 	fprintf(stdout, "\t.WIDTH(%lu)\n", a.size());
 	fprintf(stdout, ") arb_%i (\n", n);
 	fprintf(stdout, "\t .\\clock (\\clock )\n");
@@ -1087,6 +1126,7 @@ void Arbiter::PrintInst(int n) {
 }
 
 void Arbiter::PrintArbiter(){
+fprintf(stdout, "`timescale 1ns/1ps\n");
 fprintf(stdout, "module fair_hi #(\n");
 fprintf(stdout, "\tparameter   WIDTH = 8\n");
 fprintf(stdout, ")(\n");

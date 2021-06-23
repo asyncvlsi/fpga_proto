@@ -3,6 +3,7 @@
 #include <act/act.h>
 #include <act/state_machine.h>
 #include <act/passes/booleanize.h>
+#include <act/passes/finline.h>
 
 void logo () {
 
@@ -103,12 +104,18 @@ int main (int argc, char **argv) {
 	}
 
 	ActBooleanizePass *BOOL = new ActBooleanizePass (a);
+	Assert (BOOL->run(p), "Booleanize pass failed");
 
-	Assert (BOOL->run (p), "Booleanize pass failed");
+	ActCHPFuncInline *INLINE = new ActCHPFuncInline (a);
+	Assert (INLINE->run(p), "Function inline pass failed");
+	INLINE->run(p);
 
   fpga::CHPProject *cp;
  
   cp = fpga::build_machine(a,p);
+
+	fpga::Arbiter *arb = new fpga::Arbiter();
+	arb->PrintArbiter();
 
   cp->PrintVerilog();
 

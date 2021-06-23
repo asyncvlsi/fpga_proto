@@ -181,8 +181,8 @@ public:
   void AddCondition(Condition *c);
   void AddSize();
   void AddKid(StateMachine *sm);
-  void AddData(ValueIdx*, Data *);
-  void AddHS(ValueIdx*, Data *);
+  void AddData(act_connection*, Data *);
+  void AddHS  (act_connection*, Data *);
   void AddPort(Port *);
   void AddVar(Variable *);
 	void AddInst(StateMachineInst *);
@@ -225,12 +225,12 @@ private:
 
 	std::vector<StateMachineInst *> inst;
 
-  std::map<ValueIdx*, std::vector<Data *>> data;
-	std::map<ValueIdx*, std::vector<Data *>> hs_data;
+  std::map<act_connection*, std::vector<Data *>> data;
+	std::map<act_connection*, std::vector<Data *>> hs_data;
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;
-	std::map<ValueIdx *, Variable *> vm;
+	std::map<ValueIdx *, std::vector<Variable *> > vm;
 
   std::vector<Condition *> guard_condition;
   std::vector<Condition *> state_condition;
@@ -350,11 +350,12 @@ class Port {
 public:
 
   Port();
-  Port(int, int, int, act_connection *);
+  Port(int, int, int, int, ValueIdx *, act_connection *);
   ~Port();
 
   int GetDir();
   act_connection *GetCon();
+	ValueIdx *GetVx();
 	int GetChan();
 	int GetInst();
 
@@ -362,7 +363,7 @@ public:
 	void SetCtrlChan();
 
   void Print();
-	void PrintName();
+	void PrintName(int func = 0);
 
 private:
 
@@ -370,7 +371,9 @@ private:
   int width;
   int ischan; //0 - no, 1 - yes, 2 - control chan(no data)
 	int inst;
+	int reg; //0 - wire, 1 - reg
 
+	ValueIdx *root_id;
   act_connection *connection;
 
 };
@@ -383,6 +386,8 @@ public:
   Variable();
   Variable(int, int);
   Variable(int, int, ValueIdx *);
+  Variable(int, int, ValueIdx *, act_connection *);
+  Variable(int, int, int, ValueIdx *, act_connection *);
   
 	void AddDimension(int);
 
@@ -391,6 +396,7 @@ public:
 	int GetDimNum();
 
 	int IsChan();
+	int IsPort();
 
   void PrintVerilog();
 
@@ -398,6 +404,7 @@ private:
 
   int type;   //0 - reg, 1 - wire
 	int ischan; //0 - no, 1 - yes
+	int isport; //0 - no, 1 - yes
 
 	std::vector<int> dim; //vector of array dimentions width
 

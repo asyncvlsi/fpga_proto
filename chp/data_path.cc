@@ -89,26 +89,13 @@ Data::~Data () {}
 /*
  *  Port Class
  */
-int Port::GetChan() {
-	return ischan;
-}
+int Port::GetChan() {	return ischan;}
+int Port::GetDir() {  return dir;}
+act_connection *Port::GetCon(){  return connection;}
+ValueIdx *Port::GetVx() { return root_id; } 
+int Port::GetInst() { return inst; }
 
-int Port::GetDir() {
-  return dir;
-}
-
-act_connection *Port::GetCon(){
-  return connection;
-}
-
-int Port::GetInst() {
-	return inst;
-}
-
-void Port::SetInst() {
-	inst = 1;
-}
-
+void Port::SetInst() {	inst = 1;}
 void Port::SetCtrlChan() {
 	if (ischan == 0) {
 		fatal_error("can't use it");
@@ -122,14 +109,19 @@ Port::Port(){
   width = 0;
   ischan = 0;
 	inst = 0;
+	reg = 0;
+	root_id = NULL;
   connection = NULL;
 }
 
-Port::Port(int dir_, int width_, int chan_, act_connection *c_){
+Port::Port(int dir_, int width_, int chan_, int reg_, 
+						ValueIdx *rid_, act_connection *c_){
   dir = dir_;
   width = width_;
   ischan = chan_;
 	inst = 0;
+	reg = reg_;
+	root_id = rid_;
   connection = c_;
 }
 
@@ -138,38 +130,52 @@ Port::~Port() {}
 /*
  *  Variable Class
  */
-ValueIdx *Variable::GetId(){
-	return vx;
-}
-
-int Variable::GetDimNum(){
-	return dim.size();
-}
-
-void Variable::AddDimension(int d) {
-	dim.push_back(d);
-}
-
-int Variable::IsChan() {
-	return ischan;
-}
+ValueIdx *Variable::GetId(){	return vx;}
+int Variable::GetDimNum(){	return dim.size();}
+act_connection *Variable::GetCon(){	return id;}
+void Variable::AddDimension(int d) {dim.push_back(d);}
+int Variable::IsChan() {return ischan;}
+int Variable::IsPort() {return isport;}
 
 Variable::Variable() {
   type = 0;
 	ischan = 0;
+	isport = 0;
 	vx = NULL;
+	id = NULL;
 }
 
 Variable::Variable(int type_, int ischan_) {
   type = type_;
 	ischan = ischan_;
+	isport = 0;
 	vx = NULL;
+	id = NULL;
 }
 
 Variable::Variable(int type_, int ischan_, ValueIdx *vx_) {
   type = type_;
 	ischan = ischan_;
+	isport = 0;
 	vx = vx_;
+	id = NULL;
 }
 
+Variable::Variable(int type_, int ischan_, 
+										ValueIdx *vx_, act_connection *id_) {
+  type = type_;
+	ischan = ischan_;
+	isport = 0;
+	vx = vx_;
+	id = id_;
+}
+
+Variable::Variable(int type_, int ischan_, int isport_, 
+										ValueIdx *vx_, act_connection *id_) {
+  type = type_;
+	ischan = ischan_;
+	isport = isport_;
+	vx = vx_;
+	id = id_;
+}
 }
