@@ -747,7 +747,7 @@ void Condition::PrintPlain() {
       break;
     case (3) :
       PrintScope(scope);
-      fprintf(stdout, "cond%i = ", num);
+      fprintf(stdout, "cond_%i = ", num);
       for (auto cc : u.c->c) {
         if (u.c->type == 2) {
           fprintf(stdout, "!");
@@ -762,7 +762,7 @@ void Condition::PrintPlain() {
           sm = ss->GetPar();
           fprintf(stdout, "state_cond_%i ", cc->GetNum());
         } else {
-          fprintf(stdout, "cond%i ", cc->GetNum());
+          fprintf(stdout, "cond_%i ", cc->GetNum());
         }
         if (cc != u.c->c[u.c->c.size()-1]) {
           if (u.c->type != 1) {
