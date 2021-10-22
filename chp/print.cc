@@ -1,5 +1,6 @@
-#include <act/state_machine.h>
 #include <act/act.h>
+#include <act/passes/booleanize.h>
+#include <act/state_machine.h>
 #include <string>
 
 /*
@@ -8,6 +9,8 @@
  */
 
 namespace fpga {
+
+static ActBooleanizePass *BOOL = NULL;
 
 std::string get_module_name (Process *p) {
 
@@ -70,10 +73,13 @@ void CHPProject::PrintPlain() {
   }
 }
 
-void CHPProject::PrintVerilog() {
+void CHPProject::PrintVerilog(Act *a, int sv) {
+
+  ActPass *apb = a->pass_find("booleanize");
+  BOOL = dynamic_cast<ActBooleanizePass *>(apb);
   for (auto n = hd; n; n = n->GetNext()) {
     if (!n->GetPar()) {
-      n->PrintVerilogHeader();
+      n->PrintVerilogHeader(sv);
     }
     n->PrintVerilog();
   }
@@ -162,7 +168,7 @@ void StateMachine::PrintVerilogWires(){
   fprintf(stdout, "\n");
 }
 
-void StateMachine::PrintVerilogHeader() {
+void StateMachine::PrintVerilogHeader(int sv) {
   if (p) {
     fprintf(stdout, "`timescale 1ns/1ps\n\n");
     std::string name = get_module_name(p);
@@ -178,7 +184,11 @@ void StateMachine::PrintVerilogHeader() {
 
   PrintVerilogWires();
   PrintVerilogVars();
-  PrintVerilogParameters();
+  if (sv == 1) {
+    PrintSystemVerilogParameters(0);
+  } else {
+    PrintVerilogParameters();
+  }
   fprintf(stdout, "\n");
 
 }
@@ -202,6 +212,51 @@ void StateMachine::PrintParent(StateMachine *p, int f = 0) {
 	}
   if (p->par) {
     PrintParent(p->GetPar(), f);
+  }
+}
+
+void StateMachine::PrintSystemVerilogParameters(int f)
+{
+  //TODO: Make it nice, man...
+  if (f == 0) {
+    fprintf(stdout,"typedef enum{\n");
+    fprintf(stdout,"\tIDLE_LOOP,IDLE_RECV,IDLE_SEND,IDLE_ASSIGN,IDLE_SELECT,\n");
+    fprintf(stdout,"\tEXIT_LOOP,EXIT_RECV,EXIT_SEND,EXIT_ASSIGN,EXIT_SELECT,\n");
+    fprintf(stdout,"\tSELECT_STATEMENT0, SELECT_STATEMENT1,\n");
+    fprintf(stdout,"\tSELECT_STATEMENT2, SELECT_STATEMENT3,\n");
+    fprintf(stdout,"\tSELECT_STATEMENT4, SELECT_STATEMENT5,\n");
+    fprintf(stdout,"\tLOOP_STATEMENT0, LOOP_STATEMENT1,\n");
+    fprintf(stdout,"\tLOOP_STATEMENT2, LOOP_STATEMENT3,\n");
+    fprintf(stdout,"\tLOOP_STATEMENT4, LOOP_STATEMENT5\n");
+    fprintf(stdout,"}states;\n\n");
+  }
+  if (top) {
+  	fprintf(stdout, "states ");
+  	top->PrintVerilogName(1);
+  	fprintf(stdout, " = IDLE_");
+    top->PrintType();
+  	fprintf(stdout, ";\n");
+  	for (auto i = 0; i < size; i++) {
+  	  fprintf(stdout, "localparam ");
+  	  top->PrintVerilogName(2);
+      if (i == 0) {
+        fprintf(stdout, "_%i = IDLE_", i);
+        top->PrintType();
+        fprintf(stdout, ";\n");
+      } else if (i == size - 1) {
+        fprintf(stdout, "_%i = EXIT_", i);
+        top->PrintType();
+        fprintf(stdout, ";\n");
+      } else {
+    	  fprintf(stdout, "_%i = ", i);
+        top->PrintType();
+        fprintf(stdout, "_STATEMENT%i;\n", i-1);
+      }
+  	}
+  	fprintf(stdout, "\n");
+  	for (auto c : csm) {
+  	  c->PrintSystemVerilogParameters(1);
+  	}
   }
 }
 
@@ -229,9 +284,9 @@ void StateMachine::PrintVerilog() {
   }
 
 	if (top) {
-	  fprintf(stdout, "/*\n\tState Machine type:");
-		top->PrintType();
-  	fprintf(stdout, "*/\n\n");
+	//  fprintf(stdout, "/*\n\tState Machine type:");
+	// 	top->PrintType();
+  // 	fprintf(stdout, "*/\n\n");
 	} else {
 		fprintf(stdout, "/*\tNO CHP BODY IN THE PROCESS\t*/\n");
 	}
@@ -264,7 +319,7 @@ void StateMachine::PrintVerilog() {
 
 	if (top) {
   	fprintf(stdout, "always @(posedge \\clock )\n");
-  	fprintf(stdout, "if (\\reset )\n\t");
+  	fprintf(stdout, "if (\\reset ) begin\n\t");
   	fprintf(stdout, "sm%i_", number);
   	if (par) {
   	  PrintParent(par);
@@ -275,8 +330,20 @@ void StateMachine::PrintVerilog() {
   	  PrintParent(par, 2);
   	}
   	fprintf(stdout, "STATE_0;\n");
+    fprintf(stdout, "end\n");
 	  top->PrintVerilog();
 	  PrintVerilogState(top->GetNextState());
+    fprintf(stdout, "else begin\n");
+    fprintf(stdout, "\tsm%i_", number);
+    if (par) { 
+      PrintParent(par);
+    }
+    fprintf(stdout, "state <= sm%i_", number);
+    if (par) { 
+      PrintParent(par);
+    }
+    fprintf(stdout, "state;\n");
+    fprintf(stdout, "end\n");
 	}
 
   fprintf(stdout, "\n");
@@ -287,11 +354,46 @@ void StateMachine::PrintVerilog() {
 	int ef = 1;
 
   for (auto id : data) {
+    act_boolean_netlist_t *bnl;
+    bnl = BOOL->getBNL(GetProc());
+    act_dynamic_var_t *dv;
+    dv = BOOL->isDynamicRef(bnl, id.first->toid());
+    if (dv) {
+      int dim = dv->a->nDims();
+      for (auto k = 0; k < dim; k++) {
+        fprintf(stdout, "integer k%i;\n",k);
+      }
+    }
     fprintf(stdout, "always @(posedge \\clock )\n");
    	fprintf(stdout, "if (\\reset ) begin\n");
-		fprintf(stdout, "\t\\");
-		id.first->toid()->Print(stdout);
-  	fprintf(stdout, " <= 0;\n");
+    if (!dv) {
+		  fprintf(stdout, "\t\\");
+		  id.first->toid()->Print(stdout);
+  	  fprintf(stdout, " <= 0;\n");
+    } else {
+      std::string ind = "\t";
+      int dim = 0;
+      dim = dv->a->nDims();
+      for (auto k = 0; k < dim; k++) {
+        fprintf(stdout, "%sfor (k%i=0;k%i<%i;k%i=k%i+1) begin\n", ind.c_str(),
+                                                            k,k,
+                                                            dv->a->range_size(k),
+                                                            k,k);
+        ind += "\t";
+      }
+      fprintf(stdout, "%s\\", ind.c_str());
+      id.first->toid()->rootVx(GetProc()->CurScope())->
+                        connection()->toid()->Print(stdout);
+      fprintf(stdout, " ");
+      for (auto k = 0; k < dim; k++) {
+        fprintf(stdout, "[k%i]",k);
+      }
+      fprintf(stdout, " <= 0;\n");
+      for (auto k = 0; k < dim; k++) {
+        ind.pop_back();
+        fprintf(stdout, "%send\n", ind.c_str());
+      }
+    }
    	fprintf(stdout, "end\n");
 	 	ef = 0;
     for (auto dd : id.second) {
@@ -306,6 +408,15 @@ void StateMachine::PrintVerilog() {
 			ef = 0;
     }
 		ef = 1;
+    fprintf(stdout, "else begin\n");
+    if (!dv) {
+		  fprintf(stdout, "\t\\");
+		  id.first->toid()->Print(stdout);
+  	  fprintf(stdout, " <= \\");
+		  id.first->toid()->Print(stdout);
+      fprintf(stdout, " ;\n");
+    }   
+    fprintf(stdout, "end\n");
     fprintf(stdout, "\n");
   }
 
@@ -428,23 +539,23 @@ void State::PrintPlain(int p) {
 
 void State::PrintType(){
   if (type == ACT_CHP_SEMI) {
-    fprintf(stdout, "SEMI\n");
+    fprintf(stdout, "SEMI");
   } else if (type == ACT_CHP_COMMA) {
-    fprintf(stdout, "COMMA\n");
+    fprintf(stdout, "COMMA");
   } else if (type == ACT_CHP_SELECT) {
-    fprintf(stdout, "SELECT\n");
+    fprintf(stdout, "SELECT");
   } else if (type == ACT_CHP_SELECT_NONDET) {
-    fprintf(stdout, "NONDET\n");
+    fprintf(stdout, "NONDET");
   } else if (type == ACT_CHP_LOOP) {
-    fprintf(stdout, "LOOP\n");
+    fprintf(stdout, "LOOP");
   } else if (type == ACT_CHP_SKIP) {
-    fprintf(stdout, "SKIP\n");
+    fprintf(stdout, "SKIP");
   } else if (type == ACT_CHP_ASSIGN) {
-    fprintf(stdout, "ASSIGN\n");
+    fprintf(stdout, "ASSIGN");
   } else if (type == ACT_CHP_SEND) {
-    fprintf(stdout, "SEND\n");
+    fprintf(stdout, "SEND");
   } else if (type == ACT_CHP_RECV) {
-    fprintf(stdout, "RECV\n");
+    fprintf(stdout, "RECV");
   } else {
     fprintf(stdout, "Not supported type: %i\n", type);
   }
@@ -476,12 +587,13 @@ void State::PrintVerilog(int p) {
   for (auto c : ns) {
     fprintf(stdout, "else if (");
     c.second->PrintVerilog(0);
-    fprintf(stdout, ")\n\t");
+    fprintf(stdout, ") begin\n\t");
     if (par) PrintParent(par);
     fprintf(stdout, "state <= ");
     if (par) PrintParent(par,1);
     fprintf(stdout, "STATE_%i", c.first->GetNum());
     fprintf(stdout, ";\n");
+    fprintf(stdout, "end\n");
 	}
 
 }
@@ -491,7 +603,6 @@ void State::PrintVerilog(int p) {
  */
 
 void PrintExpression(Expr *e, StateMachine *scope) {
-//	fprintf(stdout, "TYPE: %i\n", e->type);
   switch (e->type) {
     case (E_AND):
       PrintExpression(e->u.e.l, scope);
@@ -557,8 +668,17 @@ void PrintExpression(Expr *e, StateMachine *scope) {
     case (E_VAR):
       ActId *id;
       id = (ActId *)e->u.e.l;
-			fprintf(stdout, "\\");
-			id->Print(stdout);
+      act_boolean_netlist_t *bnl;
+      bnl = BOOL->getBNL(scope->GetProc());
+      act_dynamic_var_t *dv;
+      dv = BOOL->isDynamicRef(bnl, id);
+  		fprintf(stdout, "\\");
+      if (!dv) { 
+  		  id->Print(stdout);
+      } else {
+        std::string ts = print_array_ref(id);
+        fprintf(stdout, "%s", ts.c_str());
+      }
       break;
     case (E_QUERY):
 			PrintExpression(e->u.e.l, scope);
@@ -934,15 +1054,20 @@ void Data::PrintVerilogHS(int f){
   }
 }
 
-void Data::PrintVerilogVar() {
-  id->Print(stdout);
-}
-
 void Data::PrintVerilogAssignment() {
   if (printed) {return;}
   printed = 1;
 	fprintf(stdout, "\t\\");
-	id->Print(stdout);
+  act_boolean_netlist_t *bnl;
+  bnl = BOOL->getBNL(scope->GetProc());
+  act_dynamic_var_t *dv;
+  dv = BOOL->isDynamicRef(bnl, id);
+  if (!dv) { 
+    id->Print(stdout);
+  } else {
+    std::string ts = print_array_ref(id);
+    fprintf(stdout, "%s", ts.c_str());
+  }
 	fprintf(stdout, " <= ");
   if (type == 0) {
 		if (u.assign.e->type == 29) {
@@ -994,15 +1119,20 @@ void Variable::PrintVerilog (){
   } else {
     fprintf(stdout, "wire\t");
   }
-  fprintf(stdout, "[%i:0]\t", dim[0]);
-
-	fprintf(stdout, "\\");
+  if (dim[0] >= 1) {
+    fprintf(stdout, "[%i:0]\t", dim[0]);
+  } else {
+    fprintf(stdout, "\t");
+  }
+  
+  fprintf(stdout, "\\");
 	id->toid()->Print(stdout);
 	for (auto i = 1; i < dim.size(); i++) {
-    fprintf(stdout, "[%i:0]", dim[i]);
+    if (isdyn == 1) { fprintf(stdout, " "); }
+    fprintf(stdout, "[%i:0]", dim[i]-1);
 	}
   fprintf(stdout, " ;\n");
-
+  
 	ActId *tmp_id = id->toid();
 	if (ischan == 1 && isport == 1) {
 		if (type == 0) {
@@ -1026,7 +1156,7 @@ void Variable::PrintVerilog (){
 		fprintf(stdout, "wire\t\\");
 		tmp_id->Print(stdout);
 		fprintf(stdout, "_ready ;\n");
-
+  
 	}
 	delete tmp_id;
 }
@@ -1136,7 +1266,7 @@ fprintf(stdout, "\t\tinput   [WIDTH-1:   0]  req,\n");
 fprintf(stdout, "\t\toutput  [WIDTH-1:   0]  grant\n");
 fprintf(stdout, "\t);\n");
 fprintf(stdout, "\t\n");
-fprintf(stdout, "reg\t[WIDTH-1:0]\tpriority [0:WIDTH-1];\n");
+fprintf(stdout, "reg\t[WIDTH-1:0]\tpriorit [0:WIDTH-1];\n");
 fprintf(stdout, "\n");
 fprintf(stdout, "reg\t[WIDTH-1:0]\treq_d;\n");
 fprintf(stdout, "wire\t[WIDTH-1:0]\treq_neg;\n");
@@ -1152,7 +1282,7 @@ fprintf(stdout, "\treq_d <=  0;\n");
 fprintf(stdout, "else\n");
 fprintf(stdout, "\treq_d <= req;\n");
 fprintf(stdout, "\n");
-fprintf(stdout, "assign shift_prio = |(req_neg & priority[0]) & !(|arb_match);\n");
+fprintf(stdout, "assign shift_prio = |(req_neg & priorit[0]) & !(|arb_match);\n");
 fprintf(stdout, "\t\n");
 fprintf(stdout, "genvar j;\n");
 fprintf(stdout, "genvar i;\n");
@@ -1175,21 +1305,21 @@ fprintf(stdout, "for (j = 0; j < WIDTH; j = j+1) begin\n");
 fprintf(stdout, "\n");
 fprintf(stdout, "assign req_neg[j] = !req[j] & req_d[j];\n");
 fprintf(stdout, "\n");
-fprintf(stdout, "assign grant = req & priority[0];\n");
+fprintf(stdout, "assign grant = req & priorit[0];\n");
 fprintf(stdout, "\n");
-fprintf(stdout, "assign match[j] = |(req & priority[j]);\n");
+fprintf(stdout, "assign match[j] = |(req & priorit[j]);\n");
 fprintf(stdout, "\n");
 fprintf(stdout, "always @(posedge clock)\n");
 fprintf(stdout, "if (reset)\n");
-fprintf(stdout, "\tpriority[j] <= {{j{1'b0}},1'b1,{(WIDTH-1-j){1'b0}}};\n");
+fprintf(stdout, "\tpriorit[j] <= {{j{1'b0}},1'b1,{(WIDTH-1-j){1'b0}}};\n");
 fprintf(stdout, "else if (shift_prio)\n");
-fprintf(stdout, "\tif (priority[j] == 1)\n");
-fprintf(stdout, "\t\tpriority[j] <= {1'b1, {(WIDTH-1){1'b0}}};\n");
+fprintf(stdout, "\tif (priorit[j] == 1)\n");
+fprintf(stdout, "\t\tpriorit[j] <= {1'b1, {(WIDTH-1){1'b0}}};\n");
 fprintf(stdout, "\telse\n");
-fprintf(stdout, "\t\tpriority[j] <= priority[j] >> 1;\n");
+fprintf(stdout, "\t\tpriorit[j] <= priorit[j] >> 1;\n");
 fprintf(stdout, "else if (arb_match[j]) begin\n");
-fprintf(stdout, "\tpriority[0] <= priority[j];\n");
-fprintf(stdout, "\tpriority[j] <= priority[0];\n");
+fprintf(stdout, "\tpriorit[0] <= priorit[j];\n");
+fprintf(stdout, "\tpriorit[j] <= priorit[0];\n");
 fprintf(stdout, "end\n");
 fprintf(stdout, "\t\n");
 fprintf(stdout, "end\n");

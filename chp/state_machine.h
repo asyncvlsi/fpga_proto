@@ -197,16 +197,16 @@ public:
   int GetKids();
   StateMachine *GetPar();
   StateMachine *GetNext();
-	Variable *GetVar(ValueIdx *);
   std::vector<Variable *> GetVars();
   std::vector<Port *> GetPorts();
   Process *GetProc();
 	std::vector<StateMachineInst *> GetInst();
+  inline int GetType() { return top->GetType(); };
 
   void PrintParent(StateMachine *, int);
   void PrintPlain();
   void PrintVerilog();
-  void PrintVerilogHeader();
+  void PrintVerilogHeader(int sv);
 
 private:
 
@@ -230,7 +230,8 @@ private:
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;
-	std::map<ValueIdx *, std::vector<Variable *> > vm;
+	//std::map<ValueIdx *, std::vector<Variable *> > vm;
+	std::map<act_connection *, Variable *> vm;
 
   std::vector<Condition *> guard_condition;
   std::vector<Condition *> state_condition;
@@ -244,6 +245,7 @@ private:
   void PrintVerilogWires();
   void PrintVerilogVars();
   void PrintVerilogParameters();
+  void PrintSystemVerilogParameters(int);
 
   std::vector<StateMachine *> csm;
 
@@ -262,7 +264,7 @@ public:
   void Append(StateMachine *sm);
 
   void PrintPlain();
-  void PrintVerilog();
+  void PrintVerilog(Act *a, int sv);
 
 	StateMachine *Head();
 	StateMachine *Next();
@@ -294,7 +296,6 @@ public:
   ActId *GetId();
 
   void PrintPlain();
-  void PrintVerilogVar();
   void PrintVerilogCondition(int);
   void PrintVerilogConditionUP(int);
   void PrintVerilogAssignment();
@@ -394,9 +395,13 @@ public:
 	ValueIdx *GetId();
   act_connection *GetCon();
 	int GetDimNum();
+  inline int getDimSize(int n) { return dim[n]; }
+  inline void setDimSize(int n, int ns) { dim[n] = ns; }
 
 	int IsChan();
 	int IsPort();
+
+  inline void MkDyn() { isdyn = 1; }
 
   void PrintVerilog();
 
@@ -405,6 +410,7 @@ private:
   int type;   //0 - reg, 1 - wire
 	int ischan; //0 - no, 1 - yes
 	int isport; //0 - no, 1 - yes
+  int isdyn;  //0 - no, 1 - yes
 
 	std::vector<int> dim; //vector of array dimentions width
 

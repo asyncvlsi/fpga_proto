@@ -82,7 +82,7 @@ void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
 void StateMachine::AddVar(Variable *v_){ 
 	vars.push_back(v_); 
-	vm[v_->GetId()].push_back(v_);
+	vm[v_->GetCon()] = v_;
 }
 void StateMachine::AddData(act_connection* id, Data *dd) {data[id].push_back(dd);}
 void StateMachine::AddHS(act_connection* id, Data *dd) {hs_data[id].push_back(dd);}

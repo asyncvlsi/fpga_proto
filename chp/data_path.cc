@@ -130,17 +130,18 @@ Port::~Port() {}
 /*
  *  Variable Class
  */
-ValueIdx *Variable::GetId(){	return vx;}
-int Variable::GetDimNum(){	return dim.size();}
-act_connection *Variable::GetCon(){	return id;}
-void Variable::AddDimension(int d) {dim.push_back(d);}
-int Variable::IsChan() {return ischan;}
-int Variable::IsPort() {return isport;}
+ValueIdx *Variable::GetId(){	return vx; }
+int Variable::GetDimNum(){	return dim.size(); }
+act_connection *Variable::GetCon(){	return id; }
+void Variable::AddDimension(int d) { dim.push_back(d); }
+int Variable::IsChan() { return ischan; }
+int Variable::IsPort() { return isport; }
 
 Variable::Variable() {
   type = 0;
 	ischan = 0;
 	isport = 0;
+  isdyn = 0;
 	vx = NULL;
 	id = NULL;
 }
@@ -149,6 +150,7 @@ Variable::Variable(int type_, int ischan_) {
   type = type_;
 	ischan = ischan_;
 	isport = 0;
+  isdyn = 0;
 	vx = NULL;
 	id = NULL;
 }
@@ -157,6 +159,7 @@ Variable::Variable(int type_, int ischan_, ValueIdx *vx_) {
   type = type_;
 	ischan = ischan_;
 	isport = 0;
+  isdyn = 0;
 	vx = vx_;
 	id = NULL;
 }
@@ -166,6 +169,7 @@ Variable::Variable(int type_, int ischan_,
   type = type_;
 	ischan = ischan_;
 	isport = 0;
+  isdyn = 0;
 	vx = vx_;
 	id = id_;
 }
@@ -175,6 +179,7 @@ Variable::Variable(int type_, int ischan_, int isport_,
   type = type_;
 	ischan = ischan_;
 	isport = isport_;
+  isdyn = 0;
 	vx = vx_;
 	id = id_;
 }

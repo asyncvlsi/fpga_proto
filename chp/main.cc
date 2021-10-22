@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <act/act.h>
-#include <act/state_machine.h>
 #include <act/passes/booleanize.h>
 #include <act/passes/finline.h>
+#include <act/state_machine.h>
 
 void logo () {
 
@@ -32,6 +32,8 @@ void usage () {
   fprintf(stdout, "Usage: chp2fpga [-p <process_name>] <*.act>\n");
   fprintf(stdout, "=============================================================================================\n");
   fprintf(stdout, "h - Usage guide\n");
+  fprintf(stdout, "a - Add arbiter to the print out (only needed for non-det selection)\n");
+  fprintf(stdout, "s - System Verilog state machine style\n");
   fprintf(stdout, "o - Output file\n");
   fprintf(stdout, "=============================================================================================\n");
 }
@@ -51,7 +53,10 @@ int main (int argc, char **argv) {
   extern int opterr;
   opterr = 0;
 
-  while ((key = getopt (argc, argv, "p:ho:")) != -1) {
+  int parb = 0;
+  int sv = 0;
+
+  while ((key = getopt (argc, argv, "p:asho:")) != -1) {
     switch (key) {
       case 'o':
         fout  = fopen(optarg, "w");
@@ -59,6 +64,12 @@ int main (int argc, char **argv) {
       case 'h':
         usage();
         exit(1);
+        break;
+      case 'a':
+        parb = 1;
+        break;
+      case 's':
+        sv = 1;
         break;
       case 'p':
         if (proc) {
@@ -114,10 +125,12 @@ int main (int argc, char **argv) {
  
   cp = fpga::build_machine(a,p);
 
-	fpga::Arbiter *arb = new fpga::Arbiter();
-	arb->PrintArbiter();
+  if (parb == 1) {
+	  fpga::Arbiter *arb = new fpga::Arbiter();
+	  arb->PrintArbiter();
+  }
 
-  cp->PrintVerilog();
+  cp->PrintVerilog(a, sv);
 
   return 0;
 }
