@@ -4,5 +4,7 @@ ref/
 x86*
 benchmark/
 presentation/
-fpgasim/
+fpga_sim/
+async_temp/
+bugs/
 Makefile.deps
