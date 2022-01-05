@@ -1607,7 +1607,7 @@ void map_instances(CHPProject *cp){
 //Adding all instances in the current process
 void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 
-  ActInstiter i(cs);
+  ActUniqProcInstiter i(cs);
   
   StateMachineInst *smi;
   
@@ -1615,77 +1615,77 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
-    if (TypeFactory::isProcessType(vx->t)) {
-      if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
-        continue;
-      }
+    if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
+      continue;
+    }
       
-      act_boolean_netlist_t *sub;
-      sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
+    act_boolean_netlist_t *sub;
+    sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
       
-      int ports_exist = 0;
-      for (int j = 0; j < A_LEN(sub->chpports); j++) {
-        if (sub->chpports[j].omit == 0) {
-          ports_exist = 1;
-          break;
-        }
+    int ports_exist = 0;
+    for (int j = 0; j < A_LEN(sub->chpports); j++) {
+      if (sub->chpports[j].omit == 0) {
+	ports_exist = 1;
+	break;
       }
-      if (ports_exist == 1) {
-        if (vx->t->arrayInfo()) {
-          Arraystep *as = vx->t->arrayInfo()->stepper();
-          while (!as->isend()) {
-            Process *p = dynamic_cast<Process *>(vx->t->BaseType());
-            char *ar = as->string();
-            std::vector<Port *> ports;
-            for (auto j = 0; j < A_LEN(sub->chpports); j++){
-              if (sub->chpports[j].omit) { continue; }
-              act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-              ValueIdx *vv = c->toid()->rootVx(cs);           
+    }
+    if (ports_exist == 1) {
+      if (vx->t->arrayInfo()) {
+	Arraystep *as = vx->t->arrayInfo()->stepper();
+	while (!as->isend()) {
+	  if (vx->isPrimary (as->index())) {
+	    Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+	    char *ar = as->string();
+	    std::vector<Port *> ports;
+	    for (auto j = 0; j < A_LEN(sub->chpports); j++){
+	      if (sub->chpports[j].omit) { continue; }
+	      act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+	      ValueIdx *vv = c->toid()->rootVx(cs);           
 
-              ihash_bucket *hb;
-              hb = ihash_lookup(bnl->cH, (long)c);
-              act_booleanized_var_t *bv;
-              bv = (act_booleanized_var_t *)hb->v;
+	      ihash_bucket *hb;
+	      hb = ihash_lookup(bnl->cH, (long)c);
+	      act_booleanized_var_t *bv;
+	      bv = (act_booleanized_var_t *)hb->v;
               
-              int dir = sub->chpports[j].input;
-              int width = bv->width;
-              int ischan = bv->ischan;
+	      int dir = sub->chpports[j].input;
+	      int width = bv->width;
+	      int ischan = bv->ischan;
               
-              Port *ip = new Port(dir,width,ischan,0,vv, c);
-              ip->SetInst();
-              ports.push_back(ip);
-              iport++;
-            }
-            smi = new StateMachineInst(p,vx,ar,ports);
-            sm->AddInst(smi);
-            as->step();
-          }
-        } else {
-          Process *p = dynamic_cast<Process *>(vx->t->BaseType());
-          char *ar = NULL;
-          std::vector<Port *> ports;
-          for (auto j = 0; j < A_LEN(sub->chpports); j++){
-            if (sub->chpports[j].omit) { continue; }
-            act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-            ValueIdx *vv = c->toid()->rootVx(cs);
+	      Port *ip = new Port(dir,width,ischan,0,vv, c);
+	      ip->SetInst();
+	      ports.push_back(ip);
+	      iport++;
+	    }
+	    smi = new StateMachineInst(p,vx,ar,ports);
+	    sm->AddInst(smi);
+	  }
+	  as->step();
+	}
+      } else {
+	Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+	char *ar = NULL;
+	std::vector<Port *> ports;
+	for (auto j = 0; j < A_LEN(sub->chpports); j++){
+	  if (sub->chpports[j].omit) { continue; }
+	  act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+	  ValueIdx *vv = c->toid()->rootVx(cs);
             
-            ihash_bucket *hb;
-            hb = ihash_lookup(bnl->cH, (long)c);
-            act_booleanized_var_t *bv;
-            bv = (act_booleanized_var_t *)hb->v;
+	  ihash_bucket *hb;
+	  hb = ihash_lookup(bnl->cH, (long)c);
+	  act_booleanized_var_t *bv;
+	  bv = (act_booleanized_var_t *)hb->v;
             
-            int dir = sub->chpports[j].input;
-            int width = bv->width;
-            int ischan = bv->ischan;
+	  int dir = sub->chpports[j].input;
+	  int width = bv->width;
+	  int ischan = bv->ischan;
             
-            Port *ip = new Port(dir,width,ischan,0,vv,c);
-            ip->SetInst();
-            ports.push_back(ip);
-            iport++;
-          }
-          smi = new StateMachineInst(p,vx,ar,ports);
-          sm->AddInst(smi);
-        }
+	  Port *ip = new Port(dir,width,ischan,0,vv,c);
+	  ip->SetInst();
+	  ports.push_back(ip);
+	  iport++;
+	}
+	smi = new StateMachineInst(p,vx,ar,ports);
+	sm->AddInst(smi);
       }
     }
   }
