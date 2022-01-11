@@ -59,6 +59,9 @@ private:
             //3 - comma
 						//4 - arbitrated guard
 
+  int fo;   //0 - no max fanout  applied
+            //1 - max fanout attribute applied
+
   int num;  //condition number for each paticular type
 
   union {
@@ -264,7 +267,7 @@ public:
   void Append(StateMachine *sm);
 
   void PrintPlain();
-  void PrintVerilog(Act *a, int sv);
+  void PrintVerilog(Act *, int , FILE *);
 
 	StateMachine *Head();
 	StateMachine *Next();
@@ -275,7 +278,7 @@ private:
 
 };
 
-CHPProject *build_machine (Act *, Process *);
+CHPProject *build_machine (Act *, Process *, int);
 
 /*
  *  Data path class

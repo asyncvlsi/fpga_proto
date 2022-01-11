@@ -2,6 +2,30 @@
 #include <act/passes/booleanize.h>
 #include <act/iter.h>
 
+/*
+ACT_CHP_COMMA = 0
+ACT_CHP_SEMI = 1
+ACT_CHP_SELECT = 2
+ACT_CHP_SELECT_NONDET = 3
+ACT_CHP_LOOP = 4
+ACT_CHP_DOLOOP = 5
+ACT_CHP_SKIP = 6
+ACT_CHP_ASSIGN = 7
+ACT_CHP_SEND = 8
+ACT_CHP_RECV = 9
+ACT_CHP_FUNC = 10
+ACT_CHP_SEMILOOP = 11
+ACT_CHP_COMMALOOP = 12
+ACT_CHP_HOLE = 13
+ACT_CHP_ASSIGNSELF = 14
+ACT_CHP_MACRO = 15
+ACT_HSE_FRAGMENTS = 16
+
+ACT_CHP_INF_LOOP = 17
+*/
+
+#define ACT_CHP_INF_LOOP 17
+
 namespace fpga {
 
 static ActBooleanizePass *BOOL = NULL;
@@ -73,6 +97,36 @@ void collect_vars(Expr *e, std::vector<ActId *> &vars) {
   }
 }
 
+//Function to find state dependencies
+//returns True if dependency is found
+bool find_dep(act_chp_lang_t *chp_lang, 
+              act_connection *vc)
+{
+
+  switch (chp_lang->type) {
+  case ACT_CHP_COMMA: {
+
+    list_t *l;
+    listitem_t *li;
+    act_chp_lang_t *cl;
+
+    break; 
+  }
+  case ACT_CHP_SEMI:  { break; }
+  case ACT_CHP_SELECT:{ break; }
+  case ACT_CHP_SELECT_NONDET: { break; }
+  case ACT_CHP_LOOP: { break; }
+  case ACT_CHP_DOLOOP: { break; }
+  case ACT_CHP_ASSIGN: { break; }
+  case ACT_CHP_SEND:    { break; }
+  case ACT_CHP_RECV:    { break; }
+  default:
+    return false;
+  }
+
+  return false;
+}
+
 //Function to traverse CHP description and collect all 
 //neccessary data to to build state machine. Function 
 //returns condition type to handle cases where return 
@@ -83,21 +137,22 @@ Condition *traverse_chp(Process *proc,
                         StateMachine *sm,   //current scope machine
                         StateMachine *tsm,  //top scope machine
                         Condition *pc,      //parent init cond
-                        int is_sc = 0       //is parent a semi/comma
+                        int par_chp,        //parent chp type
+                        int opt             //optimization level
                         ) {
   Scope *scope;
   scope = proc->CurScope();
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
+  Condition *tmp = NULL;
 
-  Condition *tmp;
   switch (chp_lang->type) {
   case ACT_CHP_COMMA: {
 
-    //TODO: An interesting idea is to let lower machines
-    //      know that they are a part of a COMMA statement
-    //      which means they need an EXIT state, otherwise
-    //      ASSIGN/SEND/RECV machines can be simplified by 
-    //      removing EXIT state. Right now it always exists
+    //Comma type completion means concurrent completion of 
+    //all comma'ed statements. If parent condition exists
+    //then execution is synchronized by pc otherwise a 
+    //dummy state is created at the higher level(e.g. first 
+    //statement in the SEMI chain) 
 
     std::pair<State *, Condition *> n;
     std::vector<Condition *> vc;
@@ -106,30 +161,13 @@ Condition *traverse_chp(Process *proc,
     listitem_t *li;
     act_chp_lang_t *cl;
 
-    //Comma type completion means concurrent completion of 
-    //all comma'ed statements. If statement is simple then 
-    //its evaluation happens at the current state of the 
-    //current state machine. If Statement is complex, then 
-    //new state machine is created.
-
     l = chp_lang->u.semi_comma.cmd;
 
-    //Comma is a simple statement, so create new state
-    //only if it is the top statement 
-    State *s = NULL;
-    if (sm->IsEmpty()) {
-      s = new State(ACT_CHP_COMMA, sm->GetSize(), sm);
-      sm->SetFirstState(s);
-    }
-
-    //if comma is top level statement then child condition
-    //is for the current state otherwise use parent condition
-    //to transfer to lower levels
     Condition *child_cond;
-    if (s) {
-      child_cond = new Condition(s, sm->GetSN(), sm);
-    } else {
+    if (pc) {
       child_cond = pc;
+    } else {
+      child_cond = NULL;
     }
 
     //traverse all COMMAed statements
@@ -137,7 +175,7 @@ Condition *traverse_chp(Process *proc,
 
       cl = (act_chp_lang_t *)list_value(li);
 
-      //if skip statement simply ignore
+      //ignore skip and func statements
       if (cl->type == ACT_CHP_SKIP || 
           cl->type == ACT_CHP_FUNC) {
         continue;
@@ -145,123 +183,124 @@ Condition *traverse_chp(Process *proc,
 
       //if statement is COMMA then no new sm
       //is needed otherwise create new child sm
+      //TODO: check if a comma inside a comma is possible :)
       if (cl->type == ACT_CHP_COMMA || cl->type == ACT_CHP_SEMI) {
-        tmp = traverse_chp(proc, cl, sm, tsm, child_cond, 1);
+        tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_COMMA, opt);
+        sm->AddCondition(tmp); //TODO: check this. Not sure yet
       } else {
-        StateMachine *csm = new StateMachine();
-        csm->SetNumber(sm->GetKids());
-        csm->SetParent(sm);
-        csm->SetProcess(sm->GetProc());
-        sm->AddKid(csm);
-        tmp = traverse_chp(proc, cl, csm, tsm , child_cond, 1);
+        if (sm->IsEmpty()) {
+          tmp = traverse_chp(proc, cl, sm, sm , child_cond, ACT_CHP_COMMA, opt);
+        } else {
+          StateMachine *csm = new StateMachine();
+          csm->SetNumber(sm->GetKids());
+          csm->SetParent(sm);
+          csm->SetProcess(sm->GetProc());
+          tmp = traverse_chp(proc, cl, csm, tsm , child_cond, ACT_CHP_COMMA, opt);
+          if (tmp) {
+            sm->AddKid(csm);
+          } else {
+            csm = NULL;
+            delete csm;
+          }
+        }
       }
 
-      //if valid condition is returned then add it
-      //to the termination vector
+      //add child termination condition to the termination  
+      //vector
       if (tmp) {
         vc.push_back(tmp);
       }
 
     }
 
-    //if comma is top level then need to add
-    //child condition to the termination list
-    if (s) {
-      sm->AddCondition(child_cond);
-      vc.push_back(child_cond);
+    //create general termination conditon using
+    //ANDed child termination conditions, i.e.
+    //child_term1 & child_term2 & ... & child_termN
+    if (vc.size() > 0) {
+      Comma *term_com = new Comma;
+      term_com->type = 0;
+      term_com->c = vc;
+      Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+      return term_cond;
+    } else {
+      return NULL;
     }
-
-    //creating general termination conditon
-    Comma *term_com = new Comma;
-    term_com->type = 0;
-    term_com->c = vc;
-    Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-
-    //if there is no parent sm then create dummy
-    //SKIP state and after termination switch to it
-    if (s) {
-      State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
-      //sm->AddSize();
-      n.first = exit_s;
-      n.second = term_cond;
-      s->AddNextState(n);
-    }
-  
-    sm->AddCondition(term_cond);
-
-    return term_cond;
 
     break;
   }
   case ACT_CHP_SEMI: {
 
+    //Semi is a chain of statements. Every statement
+    //execution is intiated by the termination condition
+    //of its predecessor with an exception for the very
+    //first statement which is initiated by the parent
+    //condition. If semi is a top statement then first
+    //statement in the list is a top level machine
+
     std::pair<State *, Condition *> n;
 
-    list_t *l;
-    listitem_t *li;
-    act_chp_lang_t *cl;
+    list_t *l = NULL;
+    listitem_t *li = NULL;
+    act_chp_lang_t *cl = NULL;
 
     l = chp_lang->u.semi_comma.cmd;
 
     Condition *child_cond = NULL;
 
-    //Semi is a simple statement, so create new state
-    //only if it is the top statement
-    State *s = NULL;
-    if (sm->IsEmpty()) {
-      s = new State(ACT_CHP_SEMI, sm->GetSize(), sm);
-      sm->SetFirstState(s);
-    }
+    int first_skip = 0;
 
     Comma *first_com = new Comma();
     first_com->type = 0;
     Condition *first_cond = NULL;
+
+    Comma *tmp_com = new Comma();
+    Condition *tmp_cond = NULL;
+
+    Comma *term_com = new Comma();
+    term_com->type = 0;
 
     //traverse all statements separated with semicolon
     for (li = list_first(l); li; li = list_next(li)) {
 
       cl = (act_chp_lang_t *)list_value(li);
 
-      //if statement is SKIP then simply ignore it
-      if (cl->type != ACT_CHP_SKIP && cl->type != ACT_CHP_FUNC) {
+      //ignore skip and func statements
+      if (cl->type != ACT_CHP_SKIP & cl->type != ACT_CHP_FUNC) {
 
-  //      if (li == list_first(l)) {
-  //        if (s) {
-  //          child_cond = new Condition (s, sm->GetSN(), sm);
-  //          sm->AddCondition(child_cond);
-  //        } else {
-  //          child_cond = pc;
-  //        }
-  //      } else {
-  //        if (pc) {
-  //          Comma *child_com = new Comma();
-  //          child_com->type = 0;
-  //          child_com->c.push_back(pc);
-  //          child_com->c.push_back(tmp);
-  //          child_cond = new Condition(child_com, sm->GetCCN(), sm);
-  //          sm->AddCondition(child_cond);
-  //        } else {
-  //          child_cond = tmp;
-  //        }
-  //      }
- 
-        if (li == list_first(l)) {
-          if (s) {
-            child_cond = new Condition (s, sm->GetSN(), sm);
-            sm->AddCondition(child_cond);
-          } else {
-            //Create first_com and first_cond to loop SEMI
-            //execution
-            first_com->c.push_back(pc);
+        //if the first statement was skipped then pc should be used
+        //as initial condition for the first non-skip statement
+        if (li == list_first(l) || 
+            (((act_chp_lang_t *)(list_value(list_first(l))))->type == ACT_CHP_SKIP ||
+             ((act_chp_lang_t *)(list_value(list_first(l))))->type == ACT_CHP_FUNC )
+             & first_skip == 0) {
+          first_skip = 1;
+          if (opt >= 2 & (par_chp == ACT_CHP_LOOP | 
+                          par_chp == ACT_CHP_INF_LOOP)) {
+            tmp_com->type = 2;
+            tmp_cond = new Condition (tmp_com, sm->GetCCN(), sm);
+            sm->AddCondition(tmp_cond);
+            first_com->type = 0;
+            first_com->c.push_back(tmp_cond);
+            if (pc) {
+              first_com->c.push_back(pc);
+            }
             first_cond = new Condition(first_com, sm->GetCCN(), sm);
-            child_cond = first_cond;
             sm->AddCondition(first_cond);
+            child_cond = first_cond;
+          } else {
+            if (pc) {
+              child_cond = pc;
+            } else {
+              child_cond = NULL;
+            }
           }
         } else {
-          if (pc) {
+          if (opt >= 1) {
             Comma *child_com = new Comma();
             child_com->type = 0;
-            child_com->c.push_back(pc);
+            if (pc) {
+              child_com->c.push_back(pc);
+            }
             child_com->c.push_back(tmp);
             child_cond = new Condition(child_com, sm->GetCCN(), sm);
             sm->AddCondition(child_cond);
@@ -270,48 +309,59 @@ Condition *traverse_chp(Process *proc,
           }
         }
 
-        if (cl->type == ACT_CHP_COMMA || cl->type == ACT_CHP_SEMI) {
-          tmp = traverse_chp(proc, cl, sm, tsm, child_cond, 1);
-          if (s) {
-            sm->AddCondition(tmp);
+        //If next statement is semi then do nothing
+        if (cl->type == ACT_CHP_SEMI) {
+          tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_SEMI, opt);
+          sm->AddCondition(tmp);
+        //If next statement is comma and current level is 
+        //the top of chp then comma should be synchronized
+        //by creating a dummy state otherwise follow general
+        //case scenario
+        } else if (cl->type == ACT_CHP_COMMA) {
+          if (!pc & !child_cond) {
+            State *dum_st = new State(ACT_CHP_COMMA, 0, sm);
+            sm->SetFirstState(dum_st);
+            Condition *zero_s_cond = new Condition(dum_st, sm->GetSN(), sm);
+            sm->AddCondition(zero_s_cond);
+            child_cond = zero_s_cond;
           }
+          tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_SEMI, opt);
+          sm->AddCondition(tmp);
+        //The rest statement cases
         } else {
-          StateMachine *csm = new StateMachine();
-          csm->SetNumber(sm->GetKids());
-          csm->SetParent(sm);
-          csm->SetProcess(sm->GetProc());
-          sm->AddKid(csm);
-          tmp = traverse_chp(proc, cl, csm, tsm, child_cond, 1);
+          if (sm->IsEmpty()) {
+            tmp = traverse_chp(proc, cl, sm, sm, child_cond, ACT_CHP_SEMI, opt);
+          } else {
+            StateMachine *csm = new StateMachine();
+            csm->SetNumber(sm->GetKids());
+            csm->SetParent(sm);
+            csm->SetProcess(sm->GetProc());
+            tmp = traverse_chp(proc, cl, csm, tsm, child_cond, ACT_CHP_SEMI, opt);
+            if (tmp) {
+              sm->AddKid(csm);
+            } else {
+              csm = NULL;
+              delete csm;
+            }
+          }
+        }
+
+        //if valid condition returned - replace old valid
+        //termination condition
+        if (tmp) {
+          if (term_com->c.size() > 0) {
+            term_com->c.pop_back();
+          }
+          term_com->c.push_back(tmp);
         }
       }
     }
 
-    //This condition is created together with
-    //the first_cond to loop SEMI execution, i.e.
-    //when the last statement completes execution
-    //first statement should return to the initial
-    //state before waiting for the parent machine
-    //switching its state. It is important in case
-    //of the infinite loop  or one branch loops 
-    //when parent state does not change
-    Comma *neg_com = new Comma();
-    neg_com->type = 2;
-    neg_com->c.push_back(tmp); 
-    Condition *neg_cond = new Condition(neg_com, sm->GetCCN(), sm);
-    first_com->c.push_back(neg_cond);
-    sm->AddCondition(neg_cond);
-    Comma *term_com = new Comma();
-    term_com->type = 0;
-    term_com->c.push_back(tmp);
+    //Create termination condition (last valid child term condition) 
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-    if (s) {
-      State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
-      sm->AddSize();
-      n.first = exit_s;
-      n.second = tmp;
-      s->AddNextState(n);
+    if (opt >= 2 & (par_chp == ACT_CHP_LOOP | par_chp == ACT_CHP_INF_LOOP)) {
+      tmp_com->c.push_back(term_cond);
     }
-    sm->AddCondition(term_cond);
 
     return term_cond;
     
@@ -319,13 +369,13 @@ Condition *traverse_chp(Process *proc,
   }
   case ACT_CHP_SELECT: {
 
+    //Selection is a control statement. It waits until a guard
+    //is true and executes selected branch. Its completion 
+    //is determined by the completion of the selected branch.
+
     std::pair<State *, Condition *> n;
     std::vector<Condition *> vc;
     std::vector<Condition *> ve;
-    //Selection statement completion happens after completion of
-    //execution of one if the selction options. Thus in case of
-    //return state existance function returns ORed comma condition
-    //with options completion conditions.
 
     //Create initial state (guard will be evaluated here)
     //and corresponding state condition
@@ -334,12 +384,11 @@ Condition *traverse_chp(Process *proc,
     sm->SetFirstState(s);
     Condition *zero_s_cond = new Condition(s, sm->GetSN(), sm);
     sm->AddCondition(zero_s_cond);
-
     Condition *child_cond = NULL;
     Condition *guard = NULL;
     State *ss = NULL;
 
-    //Flag for cases when parametarized select turns out
+    //Flags for cases when parametarized select turns out
     //to be useless
     //[ pbool(false) -> bla bla
     //[]else -> skip
@@ -347,8 +396,8 @@ Condition *traverse_chp(Process *proc,
     int empty_select = 0;
     int else_flag = 0;
 
+    //Check if the selection statement is empty
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-
       if (gg->g){
         if (gg->g->type == E_FALSE) { 
           empty_select = 1;
@@ -378,6 +427,7 @@ Condition *traverse_chp(Process *proc,
     if (empty_select == 0) {
       for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
       
+        //If guard is not NULL
         if (gg->g) {
           if (gg->s && gg->s->type != ACT_CHP_SKIP
                     && gg->s->type != ACT_CHP_FUNC) {
@@ -387,10 +437,12 @@ Condition *traverse_chp(Process *proc,
           } else {
             continue;
           }
+        //Guard is NULL then it is an else statement
         } else {
           if (gg->s->type == ACT_CHP_FUNC) {
             char tmp[1024] = "log";
             if (strcmp(tmp, gg->s->u.func.name->s) != 0){
+              fprintf(stdout, "%s\n", tmp);
               fatal_error("I don't know this function");
             }
           }
@@ -398,8 +450,12 @@ Condition *traverse_chp(Process *proc,
           else_flag = 1;
         }
 
+        //If statement is not NULL
         if (gg->s) {
-          if (gg->s->type != ACT_CHP_FUNC) {
+          //Create dummy skip state for skip and func statements
+          //with a valid guard
+          if (gg->s->type != ACT_CHP_FUNC ||
+              gg->s->type != ACT_CHP_SKIP) {
             ss = new State(gg->s->type, sm->GetSize(), sm);
           } else {
             ss = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
@@ -411,14 +467,21 @@ Condition *traverse_chp(Process *proc,
           guard_com->c.push_back(zero_s_cond);
           if (pc) { guard_com->c.push_back(pc); }
 
+          //Create conditions(full guard) to switch to the execution
+          //states using initial condition and corresponding
+          //guards. If guard is NULL (else) use else vector
+          //equal to all guards being false as a secondary 
+          //switching condition
           if (else_flag == 1) {
-            Comma *else_com = new Comma;
-            else_com->type = 2;
-            else_com->c = ve;
-            Condition *else_guard;
-            else_guard = new Condition(else_com, sm->GetCCN(), sm);
-            sm->AddCondition(else_guard);
-            guard_com->c.push_back(else_guard);
+            if (ve.size() > 0) {
+              Comma *else_com = new Comma;
+              else_com->type = 2;
+              else_com->c = ve;
+              Condition *else_guard;
+              else_guard = new Condition(else_com, sm->GetCCN(), sm);
+              sm->AddCondition(else_guard);
+              guard_com->c.push_back(else_guard);
+            }
           } else {
             guard_com->c.push_back(guard);
           }
@@ -430,22 +493,29 @@ Condition *traverse_chp(Process *proc,
           s->AddNextState(n);
           sm->AddCondition(full_guard);
 
+          //Create child conditions using execution states
           Condition *tmp_cond = NULL;
           if (pc) {
             Comma *child_com = new Comma;
             child_com->type = 0;
-            child_com->c.push_back(pc);
             tmp_cond = new Condition(ss, sm->GetSN(), sm);
             sm->AddCondition(tmp_cond);
             child_com->c.push_back(tmp_cond);
+            if (opt >= 1) {
+              child_com->c.push_back(pc);
+            }
             child_cond = new Condition(child_com, sm->GetCCN(), sm);
           } else {
             child_cond = new Condition(s, sm->GetSN(), sm);
           }
           sm->AddCondition(child_cond);
 
+          //Traverse the rest of the hierarchy
           if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
-            tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+            tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
+            sm->AddCondition(tmp);
+          //If statement if skip of func then use execution state
+          //as a termination condition
           } else if (gg->s->type == ACT_CHP_SKIP ||
                      gg->s->type == ACT_CHP_FUNC ){
             if (tmp_cond) {
@@ -458,8 +528,13 @@ Condition *traverse_chp(Process *proc,
             csm->SetNumber(sm->GetKids());
             csm->SetParent(sm);
             csm->SetProcess(sm->GetProc());
-            sm->AddKid(csm);
-            tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
+            tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_SELECT, opt);
+            if (tmp) {
+              sm->AddKid(csm);
+            } else {
+              csm = NULL;
+              delete csm;
+            }
           }
           if (tmp) {
             vc.push_back(tmp);
@@ -470,7 +545,8 @@ Condition *traverse_chp(Process *proc,
       }
 
       //Create new condition to switch to the exit state
-      //after execution completion
+      //after execution completion. Use ORed child terminations
+      //conditions
       Comma *exit_com = new Comma;
       exit_com->type = 1;
       exit_com->c = vc;
@@ -489,11 +565,16 @@ Condition *traverse_chp(Process *proc,
       sm->AddCondition(exit_s_cond);
       vc.push_back(exit_s_cond);
 
-      //Create termination condition which is either
-      //statement completion or exit state
+      //TODO: this is for later
+      //Comma *term_com = new Comma;
+      //term_com->type = 1;
+      //term_com->c = vc; 
+      //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+
+      //Create termination condition which is an exit state
       Comma *term_com = new Comma;
       term_com->type = 1;
-      term_com->c = vc;
+      term_com->c.push_back(exit_s_cond); 
       Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
       sm->AddCondition(term_cond);
 
@@ -514,17 +595,8 @@ Condition *traverse_chp(Process *proc,
 
     } else {
 
-      vc.push_back(zero_s_cond);
-      if (pc) {
-        vc.push_back(pc);
-      }
-      Comma *term_com = new Comma;
-      term_com->type = 0;
-      term_com->c = vc;
-      Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-      sm->AddCondition(term_cond);
-
-      return term_cond;
+      //Return NULL on the empty selection statement
+      return NULL;
 
     }
 
@@ -532,13 +604,13 @@ Condition *traverse_chp(Process *proc,
   }
   case ACT_CHP_SELECT_NONDET: {
 
+    //Selection is a control statement. It waits until at least
+    //one guard is true and executes selected branch. Its completion 
+    //is determined by the completion of the selected branch.
+
     std::pair<State *, Condition *> n;
     std::vector<Condition *> vc;
     std::vector<Condition *> ve;
-    //Selection statement completion happens after completion of
-    //execution of one if the selction options. Thus in case of
-    //return state existance function returns ORed comma condition
-    //with options completion conditions.
 
     //Create initial state (guard will be evaluated here)
     //and corresponding state condition
@@ -560,6 +632,7 @@ Condition *traverse_chp(Process *proc,
     int empty_select = 0;
     int else_flag = 0;
 
+    //Check if the selection statement is empty
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
       if (gg->g) {
@@ -583,7 +656,8 @@ Condition *traverse_chp(Process *proc,
       Arbiter *arb = new Arbiter();
 
       for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-      
+     
+        //No NULL guard is possible unlike in the DET SELECTION
         if (gg->g) {
           if (gg->s && gg->s->type != ACT_CHP_SKIP
                     && gg->s->type != ACT_CHP_FUNC) {
@@ -592,14 +666,6 @@ Condition *traverse_chp(Process *proc,
             sm->AddCondition(arb_guard);
             arb->AddElement(arb_guard);
             ve.push_back(guard);
-          } else {
-            continue;
-          }
-        } else {
-          if (gg->s && gg->s->type != ACT_CHP_SKIP
-                    && gg->s->type != ACT_CHP_FUNC) {
-            guard = NULL;
-            else_flag = 1;
           } else {
             continue;
           }
@@ -614,32 +680,25 @@ Condition *traverse_chp(Process *proc,
           guard_com->c.push_back(zero_s_cond);
           if (pc) { guard_com->c.push_back(pc); }
 
-          if (else_flag == 1) {
-            Comma *else_com = new Comma;
-            else_com->type = 2;
-            else_com->c = ve;
-            Condition *else_guard;
-            else_guard = new Condition(else_com, sm->GetCCN(), sm);
-            sm->AddCondition(else_guard);
-            guard_com->c.push_back(else_guard);
-            else_flag = 0;
-          } else {
-            guard_com->c.push_back(guard);
-          }
+          guard_com->c.push_back(guard);
+
           Condition *full_guard;
           full_guard = new Condition(guard_com, sm->GetCCN(), sm);
           n.first = ss;
           n.second = full_guard;
           s->AddNextState(n);
           sm->AddCondition(full_guard);
-      
+
+          Condition *tmp_cond = NULL;
           if (pc) {
             Comma *child_com = new Comma;
             child_com->type = 0;
-            child_com->c.push_back(pc);
-            Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+            tmp_cond = new Condition(ss, sm->GetSN(), sm);
             sm->AddCondition(tmp_cond);
             child_com->c.push_back(tmp_cond);
+            if (opt >= 1) {
+              child_com->c.push_back(pc);
+            }
             child_cond = new Condition(child_com, sm->GetCCN(), sm);
           } else {
             child_cond = new Condition(s, sm->GetSN(), sm);
@@ -647,14 +706,19 @@ Condition *traverse_chp(Process *proc,
           sm->AddCondition(child_cond);
       
           if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
-            tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+            tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT_NONDET, opt);
           } else {
             StateMachine *csm = new StateMachine();
             csm->SetNumber(sm->GetKids());
             csm->SetParent(sm);
             csm->SetProcess(sm->GetProc());
-            sm->AddKid(csm);
-            tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
+            tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_SELECT_NONDET, opt);
+            if (tmp) {
+              sm->AddKid(csm);
+            } else {
+              csm = NULL;
+              delete csm;
+            }
           }
           if (tmp) {
             vc.push_back(tmp);
@@ -671,27 +735,34 @@ Condition *traverse_chp(Process *proc,
       exit_com->c = vc;
       Condition *exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
       sm->AddCondition(exit_cond);
-      
+
       //Create exit state
       State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
       sm->AddSize();
-      
+
       n.first = exit_s;
       n.second = exit_cond;
       ss->AddNextState(n);
-      
+
       Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(),sm);
       sm->AddCondition(exit_s_cond);
       vc.push_back(exit_s_cond);
-      
+
       //Create termination condition which is either
       //statement completion or exit state
+      //TODO: this is for later
+      //Comma *term_com = new Comma;
+      //term_com->type = 1;
+      //term_com->c = vc;
+      //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+
+      //Create termination condition which is an exit state
       Comma *term_com = new Comma;
       term_com->type = 1;
-      term_com->c = vc;
+      term_com->c.push_back(exit_s_cond); 
       Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
       sm->AddCondition(term_cond);
-      
+
       //Return to the initial state when parent is not in 
       //the right state
       if (pc) {
@@ -711,14 +782,7 @@ Condition *traverse_chp(Process *proc,
 
     } else {
 
-      vc.push_back(zero_s_cond);
-      Comma *term_com = new Comma;
-      term_com->type = 0;
-      term_com->c = vc;
-      Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-      sm->AddCondition(term_cond);
-
-      return term_cond;
+      return NULL;
 
     }
 
@@ -726,27 +790,12 @@ Condition *traverse_chp(Process *proc,
   }
   case ACT_CHP_LOOP: {
 
-    //TODO: If a loop is infinite then there is no need for 
-    //      a state machine we can loop internal state.
-    //      This may be considered as BUFFER optimization
-    //TODO: I can check guards in the end of each statement
-    //      and switch to the EXIT state right after completion
-    //      avoiding extra cycle on going to the IDLE state
-    //      and checking guards there. MAYBE NEVER RETURN TO THE
-    //      IDLE state after executing one of the branches
+    //Loop type statement keeps executing while at least one guard
+    //is true. Termination condition is AND of all guards being false.
 
     std::pair<State *, Condition *> n;
-
-    std::vector<Condition *> guards;
-    std::vector<State *> states;
-    std::vector<Condition *> state_conds;
-    std::vector<Condition *> child_conds;
-    std::vector<Condition *> terms;
-    int br_idx = 0;
-
-    //Loop type states keep executing while at least one guard
-    //stays true. Termination condition is AND of all guards
-    //with negation.
+    std::vector<Condition *> vc;
+    std::vector<Condition *> vt;
 
     int inf_flag = 0;
 
@@ -758,13 +807,14 @@ Condition *traverse_chp(Process *proc,
     sm->AddCondition(zero_s_cond);
 
     Condition *child_cond = NULL;
-      
-    Condition *g = NULL;
-    State *ss = NULL;
-
-    //Collect all guard conditions
-    //Collect all states and corresponding state conditions
+    //Traverse all branches
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
+
+      Condition *g = NULL;
+      State *ss = NULL;
+
+      //If loop is infinite there is no guard and guard
+      //condition is replaced with the zero state condition
       if (gg->g) {
         if (gg->s->type != ACT_CHP_SKIP && 
             gg->s->type != ACT_CHP_FUNC) {
@@ -777,115 +827,129 @@ Condition *traverse_chp(Process *proc,
         inf_flag = 1;
         g = zero_s_cond;
       }
+      vt.push_back(g);
+
       ss = new State(gg->s->type, sm->GetSize(), sm);
       sm->AddSize();
-      Condition *state_cond = new Condition (ss, sm->GetSN(), sm);
-      sm->AddCondition(state_cond);
-      guards.push_back(g);
-      states.push_back(ss);
-      state_conds.push_back(state_cond);
-    }
+      n.first = ss;
 
-    //Traverse CHP below to find termination conditions
-    for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-      if (gg->g) {
-        if (gg->s->type == ACT_CHP_SKIP || 
-            gg->s->type == ACT_CHP_FUNC) { continue; }
+      //If loop is not infinite use guard as a part of the
+      ///switching condition
+      //If there is no parent condition then using zero state
+      //and corresponding guard is enough
+      Comma *par_com = new Comma();
+      par_com->type = 0;
+      if (g != zero_s_cond) {
+        par_com->c.push_back(g);
       }
+      if (pc) {
+        par_com->c.push_back(pc);
+      }
+      par_com->c.push_back(zero_s_cond);
+      Condition *par_cond = new Condition(par_com, sm->GetCCN(), sm);
+      n.second = par_cond;
+      vc.push_back(par_cond);
+      sm->AddCondition(par_cond);
+      s->AddNextState(n);
 
-      //Creating init condition for the child sm
-      //which is a corresponding branch state
+      //Create child condition
       if (pc) {
         Comma *child_com = new Comma;
         child_com->type = 0;
-        child_com->c.push_back(pc);
-        child_com->c.push_back(state_conds[br_idx]);
+        Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
+        sm->AddCondition(tmp_cond);
+        if (opt >= 2 & inf_flag == 0) {
+          Comma *tmp_com = new Comma();
+          tmp_com->type = 0;
+          tmp_com->c.push_back(tmp_cond);
+          tmp_com->c.push_back(pc);
+          child_com->type = 1;
+          child_com->c.push_back(par_cond);
+          tmp_cond = new Condition(tmp_com, sm->GetCCN(), sm);
+          sm->AddCondition(tmp_cond);
+          child_com->c.push_back(tmp_cond);
+        } else if (opt >= 1) {
+          child_com->c.push_back(tmp_cond);
+          child_com->c.push_back(pc);
+        } else {
+          child_com->c.push_back(tmp_cond);
+        }
         child_cond = new Condition(child_com, sm->GetCCN(), sm);
-        sm->AddCondition(child_cond);
       } else {
-        child_cond = state_conds[br_idx];
+        child_cond = new Condition(ss, sm->GetSN(), sm);
       }
-      child_conds.push_back(child_cond);
+      sm->AddCondition(child_cond);
 
       //Traverse lower levels of CHP hierarchy
       if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
-        tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond);
+        if (inf_flag == 0) {
+          tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_LOOP, opt);
+        } else {
+          tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_INF_LOOP, opt);
+        }
+        sm->AddCondition(tmp);
       } else {
         StateMachine *csm = new StateMachine();
         csm->SetNumber(sm->GetKids());
         csm->SetParent(sm);
         csm->SetProcess(sm->GetProc());
-        sm->AddKid(csm);
-        tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond);
+        if (inf_flag == 0) {
+          tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_LOOP, opt);
+        } else {
+          tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_INF_LOOP, opt);
+        }
+        if (tmp) {
+          sm->AddKid(csm);
+        } else {
+          csm = NULL;
+          delete csm;
+        }
       }
-      //Collect all child termination conditions
-      if (tmp) {
-        terms.push_back(tmp);
-      } else {
-        terms.push_back(child_cond);
-      }
-      //Count the number of branches
-      br_idx++;
-    }
 
-    //Here create conditions to iterate between branch
-    //states instead of returning to the IDLE state for
-    //guards reevaluation
-    Comma *rti_com = new Comma; //ready to iterate
-    rti_com->type = 1;
-    Comma *sub_com;
-    Condition *sub_cond;
-    if (pc) {
-      sub_com = new Comma;
-      sub_com->type = 0;
-      sub_com->c.push_back(pc);
-      sub_com->c.push_back(zero_s_cond);
-      sub_cond = new Condition(sub_com, sm->GetCCN(), sm);
-      sm->AddCondition(sub_cond);
-      rti_com->c.push_back(sub_cond);
-    } else {
-      sub_cond = zero_s_cond;
-      rti_com->c.push_back(sub_cond);
-    }
-    for (auto i = 0; i < br_idx; i++) {
-      sub_com = new Comma;
-      sub_com->type = 0;
-      sub_com->c.push_back(child_conds[i]);
-      sub_com->c.push_back(terms[i]);
-      sub_cond = new Condition(sub_com, sm->GetCCN(), sm);
-      sm->AddCondition(sub_cond);
-      rti_com->c.push_back(sub_cond);
-    }
-    Condition *rti_cond = new Condition(rti_com, sm->GetCCN(), sm);
-    sm->AddCondition(rti_cond);
-    for (auto i = 0; i < br_idx; i++) {
-      Comma *it_com = new Comma;  //reiterate;
-      it_com->type = 0;
-      it_com->c.push_back(guards[i]);
-      it_com->c.push_back(rti_cond);
-      Condition *it_cond = new Condition(it_com, sm->GetCCN(), sm);
-      sm->AddCondition(it_cond);
-      n.first = states[i];
-      n.second = it_cond;
-      s->AddNextState(n);
+      //Create iteration condition which is a termination
+      //condition of the branch statement
+      if (opt == 2 & gg->s->type != ACT_CHP_COMMA) {
+        if (inf_flag == 0) {
+          Comma *loop_com = new Comma;
+          loop_com->type = 0;
+          loop_com->c.push_back(tmp);
+          Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
+          n.first = s;
+          n.second = loop_c;
+          sm->AddCondition(loop_c);
+          ss->AddNextState(n);
+        }
+      } else {
+        Comma *loop_com = new Comma;
+        loop_com->type = 0;
+        loop_com->c.push_back(tmp);
+        Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
+        n.first = s;
+        n.second = loop_c;
+        sm->AddCondition(loop_c);
+        ss->AddNextState(n);
+      }
     }
 
     //create condition for all negative guards
     Comma *nguard_com = new Comma;
     nguard_com->type = 2;
-    nguard_com->c = guards;
+    nguard_com->c = vt;
     Condition *nguard_cond = new Condition(nguard_com, sm->GetCCN(), sm);
     sm->AddCondition(nguard_cond);
 
     //create general loop termination condition
+    //when loop is in the zero state and all guards
+    //are false
     Comma *exit_com = new Comma();
-    exit_com->c.push_back(rti_cond);
+    exit_com->c.push_back(zero_s_cond);
     exit_com->c.push_back(nguard_cond);
+    if (pc) {exit_com->c.push_back(pc); }
     exit_com->type = 0;
     Condition *exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
     sm->AddCondition(exit_cond);
 
-    //Create exit state to wait for parent to switch state
+    //Create exit state
     State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
     sm->AddSize();
     n.first = exit_s;
@@ -896,31 +960,35 @@ Condition *traverse_chp(Process *proc,
 
     s->AddNextState(n);
 
+    //Create condition to return to the zero state
+    //If parent condition exists then its negation is the condition
+    //If loop is infinite then exit condition is the condition, 
+    //however it is created just for the consistency of the model
+    //and never actually used.
     if (pc || inf_flag == 1) {
       Comma *npar_com = new Comma;
       if (pc) {
         npar_com->type = 2;
         npar_com->c.push_back(pc);
-      }
-      else {
+      } else {
         npar_com->type = 0;
         npar_com->c.push_back(exit_cond);
-        npar_com->c.push_back(tmp);
       }
       Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
       sm->AddCondition(npar_cond);
+
       n.first = s;
       n.second = npar_cond;
       exit_s->AddNextState(n);
     }
 
+    //Use exit state as a termination condition
     Comma *term_com = new Comma;
     term_com->type = 1;
     term_com->c.push_back(exit_s_cond);
-//TODO: This comment is not a good solution. Keep this in mind!!!
-//    term_com->c.push_back(exit_cond);
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
     sm->AddCondition(term_cond);
+
     return term_cond;
 
     break;
@@ -932,13 +1000,14 @@ Condition *traverse_chp(Process *proc,
     return NULL;
     break;
   }
-
-  //Assignment is a state machine with two states.
-  //First is IDLE and EXECUTION combined. It waits
-  //till parent is in the right state to 
-  //evaluate expression and switch to the EXIT state
-  //at the next clock cycle.
   case ACT_CHP_ASSIGN: {
+
+    //Assignment is a state machine with two states.
+    //First is IDLE and EXECUTION combined. It waits
+    //till parent is in the right state to 
+    //evaluate expression and switch to the EXIT state
+    //at the next clock cycle. Exit state is 
+    //a termination condition
 
     std::pair<State *, Condition *> n;
 
@@ -946,14 +1015,15 @@ Condition *traverse_chp(Process *proc,
     State *s = NULL;
     s = new State(ACT_CHP_ASSIGN, 0, sm);
     sm->SetFirstState(s);
-    Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
-    sm->AddCondition(zero_state_cond);
+    Condition *zero_s_cond = new Condition(s, sm->GetSN(), sm);
+    sm->AddCondition(zero_s_cond);
 
     //Create initial condition when both parent 
-    //and child are in the right state
+    //and child are in the right state. This is when
+    //the assignment takes place
     Comma *init_com = new Comma();
     init_com->type = 0;
-    init_com->c.push_back(zero_state_cond);
+    init_com->c.push_back(zero_s_cond);
     if (pc) { init_com->c.push_back(pc);  }
     Condition *init_cond = new Condition(init_com, sm->GetCCN(),sm);
     sm->AddCondition(init_cond);
@@ -971,7 +1041,9 @@ Condition *traverse_chp(Process *proc,
     s->AddNextState(n);
 
     //Processing assigned variable as well as all other
-    //variables used in the assigned expression
+    //variables used in the assigned expression. This is 
+    //necessary for the declaration section is Verilog
+    //module
     Data *d = NULL;
     ActId *var_id = chp_lang->u.assign.id;
     Expr *e = chp_lang->u.assign.e;
@@ -1001,7 +1073,11 @@ Condition *traverse_chp(Process *proc,
       nv->AddDimension(var_w-1);
       if (dv) {
         nv->MkDyn();
-      }
+        Array *a = dv->a;
+        for (auto i = 0; i < a->nDims(); i++) {
+          nv->AddDimension(a->range_size(i));
+        }
+      } 
       tsm->AddVar(nv);
     }
 
@@ -1056,43 +1132,52 @@ Condition *traverse_chp(Process *proc,
       }
     }
 
-    //Return condition
-    if (pc) {
-      Comma *npar_com = new Comma();
-      npar_com->type = 2;
-      npar_com->c.push_back(pc);
-      Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
-      sm->AddCondition(npar_cond);
-      if (is_sc == 0) {
-        Comma *full_com  = new Comma();
-        full_com->type = 1;
-        full_com->c.push_back(exit_s_cond);
-        full_com->c.push_back(npar_cond);
-        Condition *full_ret_cond = new Condition(full_com, sm->GetCCN(), sm);
-        sm->AddCondition(full_ret_cond);
-        n.first = s;
-        n.second = full_ret_cond;
-      } else {
-        n.first = s;
-        n.second = npar_cond;
-      }
-      exit_s->AddNextState(n);
-    }
-
-    //Termination condition
+    //Create termination condition using an exit state condition
     Comma *term_com = new Comma();
     term_com->type = 1;
-//TODO: this is wating for the optimization :)
-//    term_com->c.push_back(init_cond);
+    //TODO: this is for later
+    //term_com->c.push_back(init_cond);
     term_com->c.push_back(exit_s_cond);
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
     sm->AddCondition(term_cond);
 
+    //Create a return condition as a negation of the parent
+    //condition or as a more optimized version return back
+    //right after switching to exit state
+    if (pc) {
+      if (par_chp == ACT_CHP_LOOP | par_chp == ACT_CHP_INF_LOOP |
+          par_chp == ACT_CHP_SELECT | par_chp == ACT_CHP_SELECT_NONDET
+          & opt == 2) {
+        n.first = s;
+        n.second = term_cond;
+        exit_s->AddNextState(n);
+      } else {
+        Comma *npar_com = new Comma();
+        npar_com->type = 2;
+        npar_com->c.push_back(pc);
+        Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
+        sm->AddCondition(npar_cond);
+        n.first = s;
+        n.second = npar_cond;
+        exit_s->AddNextState(n);
+      }
+    }
+ 
     return term_cond;
 
     break;
   }
   case ACT_CHP_SEND: {
+
+    //Send is a communication statement. It includes two
+    //states. First is an IDLE state which waits for the
+    //parent machine to switch to the corresponding state.
+    //When both send and parent machines are in the right
+    //state valid/ready signal is set high and waits for
+    //the communication to complete, i.e. ready and valid
+    //signal of the the same channel to be high. When 
+    //communication is over (1 clock cycle) send machine
+    //switches to the EXIT state.
 
     std::pair<State *, Condition *> n;
     list_t *l;
@@ -1102,16 +1187,17 @@ Condition *traverse_chp(Process *proc,
     State *s = NULL;
     s = new State(ACT_CHP_SEND, 0, sm);
     sm->SetFirstState(s);
-    Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
-    sm->AddCondition(zero_state_cond);
+    Condition *zero_s_cond = new Condition(s, sm->GetSN(), sm);
+    sm->AddCondition(zero_s_cond);
 
-    //Create communication completion condition
+    //Create handshaking condition
     ActId *chan_id;
     chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
     Condition *hs_compl;
     hs_compl = new Condition(chan_id, sm->GetCN(), sm);
     sm->AddCondition(hs_compl);
-      
+
+    //Create communication completion condition
     Condition *commu_compl;
     Comma *commu_compl_com;
     if (pc) {
@@ -1126,15 +1212,15 @@ Condition *traverse_chp(Process *proc,
     }
 
     //Create initial condition when both parent 
-    //and child are in the right state
+    //and child are in the right state to set valid/ready high
     Comma *init_com = new Comma;
     init_com->type = 0;
-    init_com->c.push_back(zero_state_cond);
+    init_com->c.push_back(zero_s_cond);
     if (pc) { init_com->c.push_back(pc); }
     Condition *init_cond = new Condition(init_com, sm->GetCCN(), sm);
     sm->AddCondition(init_cond);
 
-    //Create initial switching condition when
+    //Create exit switching condition when
     //both parent and child are in the right state
     //and communication complete
     Comma *exit_com = new Comma;
@@ -1251,48 +1337,27 @@ Condition *traverse_chp(Process *proc,
       tsm->AddHS(chan_con, d);
     }
 
-    //Return to initial state condition is when parent
-    //machine leaves current state
- //   if (pc) {
- //     Comma *npar_com = new Comma();
- //     npar_com->type = 2;
- //     npar_com->c.push_back(pc);
- //     Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
- //     sm->AddCondition(npar_cond);
- //     
- //     n.first = s;
- //     n.second = npar_cond;
- //     exit_s->AddNextState(n);
- //   }
+    //Create return condition when parent
+    //machine switches from the current state
     if (pc) {
       Comma *npar_com = new Comma();
       npar_com->type = 2;
       npar_com->c.push_back(pc);
       Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
       sm->AddCondition(npar_cond);
-      if (is_sc == 0) {
-        Comma *full_com  = new Comma();
-        full_com->type = 1;
-        full_com->c.push_back(exit_s_cond);
-        full_com->c.push_back(npar_cond);
-        Condition *full_ret_cond = new Condition(full_com, sm->GetCCN(), sm);
-        sm->AddCondition(full_ret_cond);
-        n.first = s;
-        n.second = full_ret_cond;
-      } else {
-        n.first = s;
-        n.second = npar_cond;
-      }
+      n.first = s;
+      n.second = npar_cond;
       exit_s->AddNextState(n);
     }
 
-    //Terminate condition is when recv machine is in
-    //the exit state or when communication completion
-    //is actually happening i.e. hand shake is valid
+    //Terminate condition is when send machine is in
+    //the exit state 
     Comma *term_com = new Comma();
     term_com->type = 1;
-//TODO: This speed up is dangerous without dependency analisys
-//    term_com->c.push_back(commu_compl);
+    //TODO: This is for later
+    if (opt >= 2) {
+      term_com->c.push_back(commu_compl);
+    }
     term_com->c.push_back(exit_s_cond);
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
     sm->AddCondition(term_cond);
@@ -1303,6 +1368,16 @@ Condition *traverse_chp(Process *proc,
   }
   case ACT_CHP_RECV: {
 
+    //Recv is a communication statement. It includes two
+    //states. First is an IDLE state which waits for the
+    //parent machine to switch to the corresponding state.
+    //When both Recv and parent machines are in the right
+    //state valid/ready signal is set high and waits for
+    //the communication to complete, i.e. ready and valid
+    //signal of the the same channel to be high. When 
+    //communication is over (1 clock cycle) Recv machine
+    //switches to the EXIT state.
+
     std::pair<State *, Condition *> n;
     list_t *l;
     listitem_t *li;
@@ -1311,22 +1386,17 @@ Condition *traverse_chp(Process *proc,
     State *s = NULL;
     s = new State(ACT_CHP_RECV, 0, sm);
     sm->SetFirstState(s);
-    Condition *zero_state_cond = new Condition(s, sm->GetSN(), sm);
-    sm->AddCondition(zero_state_cond);
+    Condition *zero_s_cond = new Condition(s, sm->GetSN(), sm);
+    sm->AddCondition(zero_s_cond);
 
- //   //Create communication completion condition
- //   ActId *chan_id;
- //   chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
- //   Condition *commu_compl;
- //   commu_compl = new Condition(chan_id, sm->GetCN(), sm);
- //   sm->AddCondition(commu_compl);
-    //Create communication completion condition
+    //Create handshaking condition
     ActId *chan_id;
     chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
     Condition *hs_compl;
     hs_compl = new Condition(chan_id, sm->GetCN(), sm);
     sm->AddCondition(hs_compl);
       
+    //Create communication completion condition
     Condition *commu_compl;
     Comma *commu_compl_com;
     if (pc) {
@@ -1340,15 +1410,15 @@ Condition *traverse_chp(Process *proc,
       commu_compl = hs_compl;
     }
 
-
     //Create initial condition when both parent 
     //and child are in the right state
     Comma *init_com = new Comma;
     init_com->type = 0;
-    init_com->c.push_back(zero_state_cond);
+    init_com->c.push_back(zero_s_cond);
     if (pc) { init_com->c.push_back(pc); }
     Condition *init_cond = new Condition(init_com, sm->GetCCN(), sm);
     sm->AddCondition(init_cond);
+
     //Create initial switching condition when
     //both parent and child are in the right state
     //and communication complete
@@ -1358,6 +1428,7 @@ Condition *traverse_chp(Process *proc,
     Condition *exit_cond;
     exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
     sm->AddCondition(exit_cond);
+
     //Create second state aka exit state to wait
     //until parent switches its state
     State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
@@ -1382,12 +1453,15 @@ Condition *traverse_chp(Process *proc,
     int chan_w = 0;
     ihash_bucket_t *hb;
     act_booleanized_var_t *bv;
+    act_dynamic_var_t *dv;
+
     hb = ihash_lookup(bnl->cH, (long)chan_con);
     bv = (act_booleanized_var_t *)hb->v;
     chan_w = bv->width;
 
+    Variable *cv;
     if (is_declared(tsm, chan_con) == 4) {
-      Variable *cv = new Variable(1, chan_w-1, chan_vx,chan_con);
+      cv = new Variable(1, chan_w-1, chan_vx,chan_con);
       tsm->AddVar(cv);
     }
 
@@ -1396,9 +1470,6 @@ Condition *traverse_chp(Process *proc,
       act_connection *var_con = NULL;
       var_id = chp_lang->u.comm.var;
       ValueIdx *var_vx = var_id->rootVx(scope);
-      
-      act_dynamic_var_t *dv;
-      act_booleanized_var_t *bv;
       
       int var_w = 0;
       dv = BOOL->isDynamicRef(bnl, var_id);
@@ -1432,13 +1503,12 @@ Condition *traverse_chp(Process *proc,
         tsm->AddVar(nv);
       }
       
-      //Add data type as receive is basically assignment
-      //to the variable
       d = new Data (1, 0, 0, proc, tsm, exit_cond, 
                                     init_cond, var_id, chan_id);
       
       tsm->AddData(var_con, d);
       tsm->AddHS(chan_con, d);
+
     } else {
       ActId *did = NULL;
       int found = 0;
@@ -1458,51 +1528,29 @@ Condition *traverse_chp(Process *proc,
       tsm->AddHS(chan_con, d);
     }
 
-    //Return to initial state condition is when parent
-    //machine leaves current state
- //   if (pc) {
- //     Comma *npar_com = new Comma();
- //     npar_com->type = 2;
- //     npar_com->c.push_back(pc);
- //     Condition *npar_cond = new Condition(npar_com,sm->GetCCN(), sm);
- //     sm->AddCondition(npar_cond);
- //     n.first = s;
- //     n.second = npar_cond;
- //     exit_s->AddNextState(n);
- //   }
+    //Create return condition when parent
+    //machine switches from the current state
     if (pc) {
       Comma *npar_com = new Comma();
       npar_com->type = 2;
       npar_com->c.push_back(pc);
       Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
       sm->AddCondition(npar_cond);
-      if (is_sc == 0) {
-        Comma *full_com  = new Comma();
-        full_com->type = 1;
-        full_com->c.push_back(exit_s_cond);
-        full_com->c.push_back(npar_cond);
-        Condition *full_ret_cond = new Condition(full_com, sm->GetCCN(), sm);
-        sm->AddCondition(full_ret_cond);
-        n.first = s;
-        n.second = full_ret_cond;
-      } else {
-        n.first = s;
-        n.second = npar_cond;
-      }
+      n.first = s;
+      n.second = npar_cond;
       exit_s->AddNextState(n);
     }
 
     //Terminate condition is when recv machine is in
-    //the exit state or when communication completion
-    //is actually happening i.e. hand shake is valid
+    //the exit state
     Comma *term_com = new Comma();
     term_com->type = 1;
+    //TODO: This is for later
     //term_com->c.push_back(commu_compl);
-//TODO: This speed up is dangerous without dependency analisys
-//    term_com->c.push_back(exit_cond);
     term_com->c.push_back(exit_s_cond);
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
     sm->AddCondition(term_cond);
+
     return term_cond;
 
     break;
@@ -1618,74 +1666,74 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
       continue;
     }
-      
+    
     act_boolean_netlist_t *sub;
     sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
-      
+    
     int ports_exist = 0;
     for (int j = 0; j < A_LEN(sub->chpports); j++) {
       if (sub->chpports[j].omit == 0) {
-	ports_exist = 1;
-	break;
+        ports_exist = 1;
+        break;
       }
     }
     if (ports_exist == 1) {
       if (vx->t->arrayInfo()) {
-	Arraystep *as = vx->t->arrayInfo()->stepper();
-	while (!as->isend()) {
-	  if (vx->isPrimary (as->index())) {
-	    Process *p = dynamic_cast<Process *>(vx->t->BaseType());
-	    char *ar = as->string();
-	    std::vector<Port *> ports;
-	    for (auto j = 0; j < A_LEN(sub->chpports); j++){
-	      if (sub->chpports[j].omit) { continue; }
-	      act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-	      ValueIdx *vv = c->toid()->rootVx(cs);           
-
-	      ihash_bucket *hb;
-	      hb = ihash_lookup(bnl->cH, (long)c);
-	      act_booleanized_var_t *bv;
-	      bv = (act_booleanized_var_t *)hb->v;
+        Arraystep *as = vx->t->arrayInfo()->stepper();
+        while (!as->isend()) {
+	        if (vx->isPrimary (as->index())) {
+            Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+            char *ar = as->string();
+            std::vector<Port *> ports;
+            for (auto j = 0; j < A_LEN(sub->chpports); j++){
+              if (sub->chpports[j].omit) { continue; }
+              act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+              ValueIdx *vv = c->toid()->rootVx(cs);           
+            
+              ihash_bucket *hb;
+              hb = ihash_lookup(bnl->cH, (long)c);
+              act_booleanized_var_t *bv;
+              bv = (act_booleanized_var_t *)hb->v;
               
-	      int dir = sub->chpports[j].input;
-	      int width = bv->width;
-	      int ischan = bv->ischan;
+              int dir = sub->chpports[j].input;
+              int width = bv->width;
+              int ischan = bv->ischan;
               
-	      Port *ip = new Port(dir,width,ischan,0,vv, c);
-	      ip->SetInst();
-	      ports.push_back(ip);
-	      iport++;
-	    }
-	    smi = new StateMachineInst(p,vx,ar,ports);
-	    sm->AddInst(smi);
-	  }
-	  as->step();
-	}
+              Port *ip = new Port(dir,width,ischan,0,vv, c);
+              ip->SetInst();
+              ports.push_back(ip);
+              iport++;
+            }
+            smi = new StateMachineInst(p,vx,ar,ports);
+            sm->AddInst(smi);
+          }
+          as->step();
+        }
       } else {
-	Process *p = dynamic_cast<Process *>(vx->t->BaseType());
-	char *ar = NULL;
-	std::vector<Port *> ports;
-	for (auto j = 0; j < A_LEN(sub->chpports); j++){
-	  if (sub->chpports[j].omit) { continue; }
-	  act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-	  ValueIdx *vv = c->toid()->rootVx(cs);
-            
-	  ihash_bucket *hb;
-	  hb = ihash_lookup(bnl->cH, (long)c);
-	  act_booleanized_var_t *bv;
-	  bv = (act_booleanized_var_t *)hb->v;
-            
-	  int dir = sub->chpports[j].input;
-	  int width = bv->width;
-	  int ischan = bv->ischan;
-            
-	  Port *ip = new Port(dir,width,ischan,0,vv,c);
-	  ip->SetInst();
-	  ports.push_back(ip);
-	  iport++;
-	}
-	smi = new StateMachineInst(p,vx,ar,ports);
-	sm->AddInst(smi);
+        Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+        char *ar = NULL;
+        std::vector<Port *> ports;
+        for (auto j = 0; j < A_LEN(sub->chpports); j++){
+          if (sub->chpports[j].omit) { continue; }
+          act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+          ValueIdx *vv = c->toid()->rootVx(cs);
+          
+          ihash_bucket *hb;
+          hb = ihash_lookup(bnl->cH, (long)c);
+          act_booleanized_var_t *bv;
+          bv = (act_booleanized_var_t *)hb->v;
+          
+          int dir = sub->chpports[j].input;
+          int width = bv->width;
+          int ischan = bv->ischan;
+          
+          Port *ip = new Port(dir,width,ischan,0,vv,c);
+          ip->SetInst();
+          ports.push_back(ip);
+          iport++;
+        }
+        smi = new StateMachineInst(p,vx,ar,ports);
+        sm->AddInst(smi);
       }
     }
   }
@@ -1719,7 +1767,7 @@ void inst_to_inst_con_decl(Scope *cs, StateMachine *sm) {
 //Function to traverse act data strcutures and walk
 //through entire act project hierarchy while building
 //state machine for each process
-void traverse_act (Process *p, CHPProject *cp) {
+void traverse_act (Process *p, CHPProject *cp, int opt) {
 
   act_boolean_netlist_t *bnl = BOOL->getBNL(p);
 
@@ -1745,13 +1793,11 @@ void traverse_act (Process *p, CHPProject *cp) {
     chp = lang->getchp();
   }
 
-  ActInstiter i(cs);
+  ActUniqProcInstiter i(cs);
 
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
-    if (TypeFactory::isProcessType(vx->t)) {
-      traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp);
-    }
+    traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp, opt);
   }
 
 
@@ -1775,7 +1821,7 @@ void traverse_act (Process *p, CHPProject *cp) {
 
   //run chp traverse to build state machine
   if (chp_lang) {
-    traverse_chp(p, chp_lang, sm, sm, NULL);
+    traverse_chp(p, chp_lang, sm, sm, NULL, 0, opt);
   }
 
   //add interconnections
@@ -1786,14 +1832,14 @@ void traverse_act (Process *p, CHPProject *cp) {
   cp->Append(sm);
 }
 
-CHPProject *build_machine (Act *a, Process *p) {
+CHPProject *build_machine (Act *a, Process *p, int opt) {
 
   ActPass *apb = a->pass_find("booleanize");
 
   BOOL = dynamic_cast<ActBooleanizePass *>(apb);
 
   CHPProject *cp = new CHPProject();
-  traverse_act (p, cp);
+  traverse_act (p, cp, opt);
   map_instances(cp);
 
   return cp;

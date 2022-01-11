@@ -35,6 +35,9 @@ void usage () {
   fprintf(stdout, "a - Add arbiter to the print out (only needed for non-det selection)\n");
   fprintf(stdout, "s - System Verilog state machine style\n");
   fprintf(stdout, "o - Output file\n");
+  fprintf(stdout, "O<0,1,2,3> - Ooptimization\n");
+  fprintf(stdout, "b - Bypass optimization\n");
+  fprintf(stdout, "c - Config file input\n");
   fprintf(stdout, "=============================================================================================\n");
 }
 
@@ -55,11 +58,16 @@ int main (int argc, char **argv) {
 
   int parb = 0;
   int sv = 0;
+  int opt = 0;
 
-  while ((key = getopt (argc, argv, "p:asho:")) != -1) {
+  while ((key = getopt (argc, argv, "p:asho:c:O:")) != -1) {
     switch (key) {
       case 'o':
-        fout  = fopen(optarg, "w");
+        if (optarg == NULL) {
+          fout = stdout;
+        } else {
+          fout  = fopen(optarg, "w");
+        }
         break;
       case 'h':
         usage();
@@ -71,6 +79,8 @@ int main (int argc, char **argv) {
       case 's':
         sv = 1;
         break;
+      case 'c':
+        break;
       case 'p':
         if (proc) {
           FREE(proc);
@@ -79,6 +89,12 @@ int main (int argc, char **argv) {
           fatal_error ("Missing process name");
         }
         proc = Strdup(optarg);
+        break;
+      case 'O':
+        if (optarg == NULL) {
+          fatal_error ("Missing optimization level");
+        }
+        opt = atoi(optarg);
         break;
       case ':':
         fprintf(stderr, "Need a file here\n");
@@ -114,23 +130,23 @@ int main (int argc, char **argv) {
 		fatal_error ("Process '%s' is not expanded.", proc);
 	}
 
-	ActBooleanizePass *BOOL = new ActBooleanizePass (a);
-	Assert (BOOL->run(p), "Booleanize pass failed");
-
 	ActCHPFuncInline *INLINE = new ActCHPFuncInline (a);
 	Assert (INLINE->run(p), "Function inline pass failed");
 	INLINE->run(p);
 
+	ActBooleanizePass *BOOL = new ActBooleanizePass (a);
+	Assert (BOOL->run(p), "Booleanize pass failed");
+
   fpga::CHPProject *cp;
  
-  cp = fpga::build_machine(a,p);
-
+  cp = fpga::build_machine(a,p,opt);
+  
   if (parb == 1) {
 	  fpga::Arbiter *arb = new fpga::Arbiter();
 	  arb->PrintArbiter();
   }
-
-  cp->PrintVerilog(a, sv);
+  
+  cp->PrintVerilog(a, sv, fout);
 
   return 0;
 }
