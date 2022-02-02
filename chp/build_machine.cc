@@ -509,7 +509,6 @@ Condition *traverse_chp(Process *proc,
             child_cond = new Condition(s, sm->GetSN(), sm);
           }
           sm->AddCondition(child_cond);
-
           //Traverse the rest of the hierarchy
           if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
             tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
@@ -603,7 +602,6 @@ Condition *traverse_chp(Process *proc,
     break;
   }
   case ACT_CHP_SELECT_NONDET: {
-
     //Selection is a control statement. It waits until at least
     //one guard is true and executes selected branch. Its completion 
     //is determined by the completion of the selected branch.
@@ -908,8 +906,17 @@ Condition *traverse_chp(Process *proc,
 
       //Create iteration condition which is a termination
       //condition of the branch statement
-      if (opt == 2 & gg->s->type != ACT_CHP_COMMA) {
-        if (inf_flag == 0) {
+      if (inf_flag == 0 && tmp) {
+        if (opt == 2 && gg->s->type != ACT_CHP_COMMA) {
+          Comma *loop_com = new Comma;
+          loop_com->type = 0;
+          loop_com->c.push_back(tmp);
+          Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
+          n.first = s;
+          n.second = loop_c;
+          sm->AddCondition(loop_c);
+          ss->AddNextState(n);
+        } else {
           Comma *loop_com = new Comma;
           loop_com->type = 0;
           loop_com->c.push_back(tmp);
@@ -919,15 +926,6 @@ Condition *traverse_chp(Process *proc,
           sm->AddCondition(loop_c);
           ss->AddNextState(n);
         }
-      } else {
-        Comma *loop_com = new Comma;
-        loop_com->type = 0;
-        loop_com->c.push_back(tmp);
-        Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
-        n.first = s;
-        n.second = loop_c;
-        sm->AddCondition(loop_c);
-        ss->AddNextState(n);
       }
     }
 
@@ -1263,10 +1261,12 @@ Condition *traverse_chp(Process *proc,
     Variable *cv;
     if (is_declared(tsm, chan_con) == 3) {
       cv = new Variable(0, chan_w-1, chan_vx, chan_con);
+      cv->AddDimension(chan_w-1);
       tsm->AddVar(cv);
     } else if (is_declared(tsm, chan_con) == 2 ||
                 is_declared(tsm, chan_con) == 5) {
       cv = new Variable(0, chan_w-1, 1, chan_vx, chan_con);
+      cv->AddDimension(chan_w-1);
       tsm->AddVar(cv);
     }
 
@@ -1462,6 +1462,7 @@ Condition *traverse_chp(Process *proc,
     Variable *cv;
     if (is_declared(tsm, chan_con) == 4) {
       cv = new Variable(1, chan_w-1, chan_vx,chan_con);
+      cv->AddDimension(chan_w-1);
       tsm->AddVar(cv);
     }
 
@@ -1751,8 +1752,12 @@ void inst_to_inst_con_decl(Scope *cs, StateMachine *sm) {
       if (decl_type == 0 || decl_type == 3 || decl_type == 4) {
         act_connection *var_con = ip->GetCon();
         ValueIdx *var_vx = var_con->toid()->rootVx(cs);
+
         ihash_bucket *hb = ihash_lookup(bnl->cH, (long)var_con);
         act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
+
+        act_dynamic_var_t *dv = BOOL->isDynamicRef(bnl, var_con->toid());
+
         int var_w = bv->width;
         int var_chan = bv->ischan;
         Variable *nv = new Variable(1, var_chan, 0, var_vx, var_con);

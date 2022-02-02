@@ -8,7 +8,7 @@ namespace fpga {
  */
 
 StateMachine *CHPProject::Head() {
-	return hd;
+  return hd;
 }
 
 void CHPProject::Append(StateMachine *sm) {
@@ -61,28 +61,28 @@ int StateMachine::IsPort(act_connection *c_) {
     }
   }
   for (auto in : inst) {
-		for (auto ip : in->GetPorts()) {
-			if (ip->GetCon() == c_){
-				if (ip->GetDir() == 0) {
-					return 2;
-				} else {
-					return 1;
-				}
-			}
-		}
-	}
+    for (auto ip : in->GetPorts()) {
+      if (ip->GetCon() == c_){
+        if (ip->GetDir() == 0) {
+          return 2;
+        } else {
+          return 1;
+        }
+      }
+    }
+  }
   return 0;
 }
 
 void StateMachine::AddInst (StateMachineInst *inst_) {
-	inst.push_back(inst_);
+  inst.push_back(inst_);
 }
 void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
 void StateMachine::AddVar(Variable *v_){ 
-	vars.push_back(v_); 
-	vm[v_->GetCon()] = v_;
+  vars.push_back(v_); 
+  vm[v_->GetCon()] = v_;
 }
 void StateMachine::AddData(act_connection* id, Data *dd) {data[id].push_back(dd);}
 void StateMachine::AddHS(act_connection* id, Data *dd) {hs_data[id].push_back(dd);}
@@ -171,42 +171,42 @@ StateMachine::~StateMachine() {
 }
 
 /*
- *	State Machine Instance Class
+ *  State Machine Instance Class
  */
 void StateMachineInst::SetSM(StateMachine *sm_){
-	sm = sm_;
+  sm = sm_;
 }
 
 void StateMachineInst::SetCtrlChan(int i) {
-	ports[i]->SetCtrlChan();
+  ports[i]->SetCtrlChan();
 }
 
 Process *StateMachineInst::GetProc(){
-	return p;
+  return p;
 }
 
 std::vector<Port *> StateMachineInst::GetPorts(){
-	return ports;
+  return ports;
 }
 
 StateMachineInst::StateMachineInst(){
-	p = NULL;
-	name = NULL;
-	array = NULL;
-	sm = NULL;
+  p = NULL;
+  name = NULL;
+  array = NULL;
+  sm = NULL;
 };
 
 StateMachineInst::StateMachineInst(
-																	Process *p_,
-																	ValueIdx *name_,
-																	char *array_,
-																	std::vector<Port *> &ports_
-																	){
-	p = p_;
-	name = name_;
-	array = array_;
-	ports = ports_;
-	sm = NULL;
+                                  Process *p_,
+                                  ValueIdx *name_,
+                                  char *array_,
+                                  std::vector<Port *> &ports_
+                                  ){
+  p = p_;
+  name = name_;
+  array = array_;
+  ports = ports_;
+  sm = NULL;
 
 }
 
@@ -298,10 +298,10 @@ Condition::Condition(Expr *e_, int num_, StateMachine *sc, int a) {
 }
 
 /*
- *	Arbiter Class
+ *  Arbiter Class
  */
 void Arbiter::AddElement(Condition *c) {
-	a.push_back(c);
+  a.push_back(c);
 }
 
 Arbiter::Arbiter(){}

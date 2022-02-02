@@ -876,14 +876,24 @@ void PrintExpression(Expr *e, StateMachine *scope) {
 			cc = id->Canonical(act_scope);
 			StateMachine *tmp;
 			tmp = scope->GetPar();
-			while (tmp->GetPar()) {tmp = tmp->GetPar(); }
+      if (tmp) {
+  			while (tmp->GetPar()) {tmp = tmp->GetPar(); }
+      }
 			fprintf(output_file, "\\");
 			id->Print(output_file);
-			if (tmp->IsPort(cc) == 1) {
-				fprintf(output_file,"_ready");
-			} else if (tmp->IsPort(cc) == 2){
-				fprintf(output_file,"_valid");
-			}
+      if (tmp) {
+   	    if (tmp->IsPort(cc) == 1) {
+				  fprintf(output_file,"_ready");
+			  } else if (tmp->IsPort(cc) == 2){
+			  	fprintf(output_file,"_valid");
+			  }
+      } else {
+   	    if (scope->IsPort(cc) == 1) {
+				  fprintf(output_file,"_ready");
+			  } else if (scope->IsPort(cc) == 2){
+			  	fprintf(output_file,"_valid");
+			  }
+      }
       break;
     }
     case (E_COMMA): {

@@ -57,7 +57,7 @@ private:
             //1 - selection/loop guard
             //2 - statement completion (1 cycle operation)
             //3 - comma
-						//4 - arbitrated guard
+            //4 - arbitrated guard
 
   int fo;   //0 - no max fanout  applied
             //1 - max fanout attribute applied
@@ -136,29 +136,29 @@ private:
 class StateMachineInst {
 public:
 
-	StateMachineInst();
-	StateMachineInst(Process *, ValueIdx *, char *, std::vector<Port *>&);
-	~StateMachineInst();
+  StateMachineInst();
+  StateMachineInst(Process *, ValueIdx *, char *, std::vector<Port *>&);
+  ~StateMachineInst();
 
-	void SetSM(StateMachine *);
-	void SetCtrlChan(int i);
+  void SetSM(StateMachine *);
+  void SetCtrlChan(int i);
 
-	Process *GetProc();
-	std::vector<Port *> GetPorts();
+  Process *GetProc();
+  std::vector<Port *> GetPorts();
 
-	void PrintVerilog();
+  void PrintVerilog();
 
 private:
 
-	Process *p;
+  Process *p;
 
-	ValueIdx *name;
+  ValueIdx *name;
 
-	char *array;
+  char *array;
 
-	std::vector<Port *> ports;
+  std::vector<Port *> ports;
 
-	StateMachine *sm;
+  StateMachine *sm;
 
 };
 
@@ -188,8 +188,8 @@ public:
   void AddHS  (act_connection*, Data *);
   void AddPort(Port *);
   void AddVar(Variable *);
-	void AddInst(StateMachineInst *);
-	void AddArb(Arbiter *a);
+  void AddInst(StateMachineInst *);
+  void AddArb(Arbiter *a);
 
   int GetSize();
   int GetNum();
@@ -203,7 +203,7 @@ public:
   std::vector<Variable *> GetVars();
   std::vector<Port *> GetPorts();
   Process *GetProc();
-	std::vector<StateMachineInst *> GetInst();
+  std::vector<StateMachineInst *> GetInst();
   inline int GetType() { return top->GetType(); };
 
   void PrintParent(StateMachine *, int);
@@ -226,22 +226,22 @@ private:
 
   State *top;
 
-	std::vector<StateMachineInst *> inst;
+  std::vector<StateMachineInst *> inst;
 
   std::map<act_connection*, std::vector<Data *>> data;
-	std::map<act_connection*, std::vector<Data *>> hs_data;
+  std::map<act_connection*, std::vector<Data *>> hs_data;
 
   std::vector<Port *> ports;
   std::vector<Variable *> vars;
-	//std::map<ValueIdx *, std::vector<Variable *> > vm;
-	std::map<act_connection *, Variable *> vm;
+  //std::map<ValueIdx *, std::vector<Variable *> > vm;
+  std::map<act_connection *, Variable *> vm;
 
   std::vector<Condition *> guard_condition;
   std::vector<Condition *> state_condition;
   std::vector<Condition *> commu_condition;
   std::vector<Condition *> comma_condition;
 
-	std::vector<Arbiter *> arb;
+  std::vector<Arbiter *> arb;
 
   void PrintPlainState(std::vector<std::pair<State *, Condition *>> s);
   void PrintVerilogState(std::vector<std::pair<State *, Condition *>> s);
@@ -269,8 +269,8 @@ public:
   void PrintPlain();
   void PrintVerilog(Act *, int , FILE *);
 
-	StateMachine *Head();
-	StateMachine *Next();
+  StateMachine *Head();
+  StateMachine *Next();
 
 private:
 
@@ -359,25 +359,25 @@ public:
 
   int GetDir();
   act_connection *GetCon();
-	ValueIdx *GetVx();
-	int GetChan();
-	int GetInst();
+  ValueIdx *GetVx();
+  int GetChan();
+  int GetInst();
 
-	void SetInst();
-	void SetCtrlChan();
+  void SetInst();
+  void SetCtrlChan();
 
   void Print();
-	void PrintName(int func = 0);
+  void PrintName(int func = 0);
 
 private:
 
   int dir;  //0 - output; 1 - input
   int width;
   int ischan; //0 - no, 1 - yes, 2 - control chan(no data)
-	int inst;
-	int reg; //0 - wire, 1 - reg
+  int inst;
+  int reg; //0 - wire, 1 - reg
 
-	ValueIdx *root_id;
+  ValueIdx *root_id;
   act_connection *connection;
 
 };
@@ -393,31 +393,31 @@ public:
   Variable(int, int, ValueIdx *, act_connection *);
   Variable(int, int, int, ValueIdx *, act_connection *);
   
-	void AddDimension(int);
+  void AddDimension(int);
 
-	ValueIdx *GetId();
+  ValueIdx *GetId();
   act_connection *GetCon();
-	int GetDimNum();
+  int GetDimNum();
   inline int getDimSize(int n) { return dim[n]; }
   inline void setDimSize(int n, int ns) { dim[n] = ns; }
 
-	int IsChan();
-	int IsPort();
+  int IsChan();
+  int IsPort();
 
   inline void MkDyn() { isdyn = 1; }
 
   void PrintVerilog();
 
-private:
+//private:
 
   int type;   //0 - reg, 1 - wire
-	int ischan; //0 - no, 1 - yes
-	int isport; //0 - no, 1 - yes
+  int ischan; //0 - no, 1 - yes
+  int isport; //0 - no, 1 - yes
   int isdyn;  //0 - no, 1 - yes
 
-	std::vector<int> dim; //vector of array dimentions width
+  std::vector<int> dim; //vector of array dimentions width
 
-	ValueIdx *vx;
+  ValueIdx *vx;
   act_connection *id;  //name
 
 };
@@ -425,17 +425,17 @@ private:
 class Arbiter {
 public:
 
-	Arbiter();
-	~Arbiter();
+  Arbiter();
+  ~Arbiter();
 
-	void AddElement(Condition *c);
+  void AddElement(Condition *c);
 
-	void PrintArbiter();
-	void PrintInst(int n);
+  void PrintArbiter();
+  void PrintInst(int n);
 
 private:
-	
-	std::vector<Condition *> a;
+  
+  std::vector<Condition *> a;
 
 };
 
