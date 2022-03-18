@@ -274,8 +274,8 @@ Condition *traverse_chp(Process *proc,
              ((act_chp_lang_t *)(list_value(list_first(l))))->type == ACT_CHP_FUNC )
              & first_skip == 0) {
           first_skip = 1;
-          if (opt >= 2 & (par_chp == ACT_CHP_LOOP | 
-                          par_chp == ACT_CHP_INF_LOOP)) {
+          if ((opt >= 2 & par_chp == ACT_CHP_LOOP) | 
+                          par_chp == ACT_CHP_INF_LOOP) {
             tmp_com->type = 2;
             tmp_cond = new Condition (tmp_com, sm->GetCCN(), sm);
             sm->AddCondition(tmp_cond);
@@ -359,7 +359,7 @@ Condition *traverse_chp(Process *proc,
 
     //Create termination condition (last valid child term condition) 
     Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-    if (opt >= 2 & (par_chp == ACT_CHP_LOOP | par_chp == ACT_CHP_INF_LOOP)) {
+    if ((opt >= 2 & par_chp == ACT_CHP_LOOP) | par_chp == ACT_CHP_INF_LOOP) {
       tmp_com->c.push_back(term_cond);
     }
 
