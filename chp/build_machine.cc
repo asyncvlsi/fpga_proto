@@ -1395,7 +1395,7 @@ Condition *traverse_chp(Process *proc,
     Condition *hs_compl;
     hs_compl = new Condition(chan_id, sm->GetCN(), sm);
     sm->AddCondition(hs_compl);
-      
+
     //Create communication completion condition
     Condition *commu_compl;
     Comma *commu_compl_com;
@@ -1471,7 +1471,7 @@ Condition *traverse_chp(Process *proc,
       act_connection *var_con = NULL;
       var_id = chp_lang->u.comm.var;
       ValueIdx *var_vx = var_id->rootVx(scope);
-      
+
       int var_w = 0;
       dv = BOOL->isDynamicRef(bnl, var_id);
       if (!dv) {
@@ -1586,8 +1586,10 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   unsigned int chan = 0;
   ihash_bucket *hb;
   int reg = 1;
+//bnl->p->Print(stdout);
   for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
     if (bnl->chpports[i].omit) { continue; }
+//fprintf(stdout, "THERE\n");
     reg = 1;
     tmp_id = bnl->chpports[i].c->toid();
     tmp_v = tmp_id->rootVx(cs);
@@ -1595,9 +1597,16 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     tmp_d = bnl->chpports[i].input;
 
     hb = ihash_lookup(bnl->cH, (long)tmp_c);
+//tmp_id->Print(stdout);
+//if (hb) fprintf(stdout, " TIK1\n");
+//else fprintf(stdout, " TOK1\n");
     act_booleanized_var_t *bv;
+//fprintf(stdout, "BANG\n");
     bv = (act_booleanized_var_t *)hb->v;
-
+//if (bv) fprintf(stdout, "TIK2\n");
+//else fprintf(stdout, "TOK2\n");
+//fprintf(stdout, "BOOM\n");
+//
     tmp_w = bv->width;
     chan = bv->ischan;
 
@@ -1610,6 +1619,12 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
       }
     }
 
+//tmp_c->toid()->Print(stdout);
+//fprintf(stdout, " %s \n", tmp_v->getName());
+//fprintf(stdout, " D %i \n", tmp_d);
+//fprintf(stdout, " W %i \n", tmp_w);
+//fprintf(stdout, " C %i \n", chan);
+//fprintf(stdout, " R %i \n", reg);
     Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
     sm->AddPort(p);
   }
@@ -1682,7 +1697,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
       if (vx->t->arrayInfo()) {
         Arraystep *as = vx->t->arrayInfo()->stepper();
         while (!as->isend()) {
-	        if (vx->isPrimary (as->index())) {
+          if (vx->isPrimary (as->index())) {
             Process *p = dynamic_cast<Process *>(vx->t->BaseType());
             char *ar = as->string();
             std::vector<Port *> ports;

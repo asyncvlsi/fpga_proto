@@ -408,7 +408,7 @@ public:
 
   void PrintVerilog();
 
-//private:
+private:
 
   int type;   //0 - reg, 1 - wire
   int ischan; //0 - no, 1 - yes
