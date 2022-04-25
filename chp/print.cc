@@ -1331,7 +1331,7 @@ void Variable::PrintVerilog (){
   fprintf(output_file, " ;\n");
   
   ActId *tmp_id = id->toid();
-  if (ischan == 1 && isport == 1) {
+  if (ischan != 0 && isport == 1) {
     if (type == 0) {
       fprintf(output_file, "reg\t\\");
     } else {
@@ -1346,7 +1346,7 @@ void Variable::PrintVerilog (){
     }
     tmp_id->Print(output_file);
     fprintf(output_file, "_ready ;\n");
-  } else if (ischan == 1 && isport == 0) {
+  } else if (ischan != 0 && isport == 0) {
     if (type == 0) {
       fprintf(output_file, "reg\t\\");
     } else {
@@ -1361,7 +1361,7 @@ void Variable::PrintVerilog (){
     }
     tmp_id->Print(output_file);
     fprintf(output_file, "_ready ;\n");
-  }
+  } 
   delete tmp_id;
 }
 
