@@ -14,6 +14,8 @@ namespace fpga {
 FILE *output_file = stdout;
 static ActBooleanizePass *BOOL = NULL;
 
+void PrintExpression(Expr *, StateMachine *);
+
 std::string get_module_name (Process *p) {
 
   const char *mn = p->getName();
@@ -36,41 +38,22 @@ std::string get_module_name (Process *p) {
   }
 
   return buf;
-
 }
 
-std::string print_array_ref (ActId *id) {
+void print_array_ref (ActId *id, StateMachine *scope) {
 
   char buf[1025];
 
   id->sPrint(buf, 1025);
 
-  std::string ret_id;
-
-  int first = 0;
-
-  for (auto i = 0; i < 1024; i++) {
-    if (buf[i] == 0x5B) {
-      if (first == 0) {
-        ret_id += 0x20;
-        first = 1;
-      }
-      ret_id += buf[i];
-      if (buf[i+1] < 0x30 || buf[i+1] > 0x39) {
-        ret_id += 0x5C;
-      }
-    } else if (buf[i] == 0x5D) {
-      ret_id += 0x20;
-      ret_id += buf[i];
-    } else if (buf[i] == 0x20) {
-      continue;
-    } else {
-      ret_id += buf[i];
-    }
+  fprintf(output_file, "\%s ", id->getName());
+  for (int i = 0; i < id->arrayInfo()->nDims(); i++) {
+    fprintf(output_file, "[");
+    PrintExpression(id->arrayInfo()->getDeref(i), scope);
+    fprintf(output_file, " ]");
   }
 
-  return ret_id;
-
+  return;
 }
 
 /*
@@ -621,125 +604,77 @@ void State::PrintVerilog(int p) {
  */
 
 void PrintExpression(Expr *e, StateMachine *scope) {
-  if (e->type == E_NOT || e->type == E_COMPLEMENT) {
-    fprintf(output_file, " ~(");
-  } else if (e->type == E_UMINUS) {
-    fprintf(output_file, " -(");
-  } else if (e->type == E_CONCAT || e->type == E_COMMA) {
-  } else {
-    fprintf(output_file, "(");
-  }
+  if (e->type == E_NOT || e->type == E_COMPLEMENT) { fprintf(output_file, " ~("); } 
+  else if (e->type == E_UMINUS) { fprintf(output_file, " -("); } 
+  else if (e->type == E_CONCAT || e->type == E_COMMA) { fprintf(output_file, "{"); } 
+  else { fprintf(output_file, "("); }
   switch (e->type) {
     case (E_AND): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " & ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_OR): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " | ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_NOT): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_PLUS): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " + ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_MINUS): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " - ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_MULT): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " * ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_DIV): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " / ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_MOD): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " %% ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_LSL): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " << ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_LSR): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " >> ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_ASR): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " >>> ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_UMINUS): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_INT): {
@@ -757,24 +692,16 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       if (!dv) { 
         id->Print(output_file);
       } else {
-        std::string ts = print_array_ref(id);
-        fprintf(output_file, "%s", ts.c_str());
+        print_array_ref(id, scope);
       }
       break;
     }
     case (E_QUERY): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " ? ");
-      if (e->u.e.r->u.e.l->type == E_CONCAT || e->u.e.r->u.e.l->type == E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r->u.e.l, scope);
-      if (e->u.e.r->u.e.l->type == E_CONCAT || e->u.e.r->u.e.l->type == E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " : \n\t\t");
-      if (e->u.e.r->u.e.r->type == E_CONCAT || e->u.e.r->u.e.r->type == E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r->u.e.r, scope);
-      if (e->u.e.r->u.e.r->type == E_CONCAT || e->u.e.r->u.e.r->type == E_COMMA){fprintf(output_file," }");
-      }
       break;
     }
     case (E_LPAR): {
@@ -786,73 +713,45 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       break;
     }
     case (E_XOR): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " ^ ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_LT): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " < ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_GT): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " > ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_LE): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " <=");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;  
     }
     case (E_GE): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " >= ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_EQ): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " == ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_NE): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       fprintf(output_file, " != ");
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.r, scope);
-      if (e->u.e.r->type == E_CONCAT || e->u.e.r->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_TRUE): {
@@ -921,9 +820,7 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       } else {
         r = l;
       }
-      fprintf(output_file, "\\");
-      std::string ts = print_array_ref(((ActId *)e->u.e.l));
-      fprintf(output_file, "%s", ts.c_str());
+      print_array_ref(((ActId *)e->u.e.l), scope);
       fprintf(output_file, " [");
       if (l!=r) {
         fprintf(output_file, "%i:", l);
@@ -935,9 +832,7 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       break;
     }
     case (E_COMPLEMENT): {
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file,"{");}
       PrintExpression(e->u.e.l, scope);
-      if (e->u.e.l->type == E_CONCAT || e->u.e.l->type== E_COMMA){fprintf(output_file," }");}
       break;
     }
     case (E_REAL): {
@@ -981,10 +876,8 @@ void PrintExpression(Expr *e, StateMachine *scope) {
       break;
     }
   }
-  if (e->type == E_CONCAT || e->type == E_COMMA) {
-  } else {
-    fprintf(output_file, " )");
-  }
+  if (e->type == E_CONCAT || e->type == E_COMMA) { fprintf(output_file, " }"); } 
+  else { fprintf(output_file, " )"); }
 
 }
 
@@ -1191,52 +1084,6 @@ void Data::PrintVerilogHS(int f){
     fprintf(output_file, "Whaaaat?!\n");
   }
 }
-/*
-  if (f == 0) {
-    fprintf(output_file, "always @(posedge \\clock )\n");
-    fprintf(output_file, "if (\\reset ) begin\n\t\\");
-    if (type == 1) {
-      u.recv.chan->Print(output_file);
-    } else if (type == 2) {
-      id->Print(output_file);
-    }
-    if (scope->IsPort(cid) == 1) {
-      fprintf(output_file, "_valid <= 1'b0;\n");
-    } else if (scope->IsPort(cid) == 2) {
-      fprintf(output_file, "_ready <= 1'b0;\n");
-    } else {
-      fprintf(output_file, "Whaaaat?!\n");
-    }
-    fprintf(output_file, "end\n");
-  } else {
-    fprintf(output_file, " begin\n\t\\");
-    if (type == 1) {
-      u.recv.chan->Print(output_file);
-    } else if (type == 2) {
-      id->Print(output_file);
-    }
-    if (f == 1) {
-      if (scope->IsPort(cid) == 1) {
-        fprintf(output_file, "_valid <= 1'b0;\n");
-      } else if (scope->IsPort(cid) == 2) {
-        fprintf(output_file, "_ready <= 1'b0;\n");
-      } else {
-        fprintf(output_file, "Whaaaat?!\n");
-      }
-      fprintf(output_file, "end\n");
-    } else if (f == 2) {
-      if (scope->IsPort(cid) == 1) {
-        fprintf(output_file, "_valid <= 1'b1;\n");
-      } else if (scope->IsPort(cid) == 2) {
-        fprintf(output_file, "_ready <= 1'b1;\n");
-      } else {
-        fprintf(output_file, "Whaaaat?!\n");
-      }
-      fprintf(output_file, "end\n");
-    }
-  }
-}
-*/
 
 void Data::PrintVerilogAssignment() {
   if (printed) {return;}
@@ -1249,8 +1096,7 @@ void Data::PrintVerilogAssignment() {
   if (!dv) { 
     id->Print(output_file);
   } else {
-    std::string ts = print_array_ref(id);
-    fprintf(output_file, "%s", ts.c_str());
+    print_array_ref(id, scope);
   }
   fprintf(output_file, " <= ");
   if (type == 0) {
@@ -1372,8 +1218,7 @@ void Port::PrintName(int func){
   if (func == 0) {
     connection->toid()->Print(output_file);
   } else {
-    std::string cid = print_array_ref (connection->toid());
-    fprintf(output_file, "%s", cid.c_str());
+    print_array_ref (connection->toid(), NULL);
   }
 }
 
