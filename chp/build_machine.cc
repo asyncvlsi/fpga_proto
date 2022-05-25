@@ -47,6 +47,15 @@ State *new_state (int type, StateMachine *sm)
   return s;
 }
 
+//Function to create new guard condition
+Condition *new_guard_cond (Expr *e, StateMachine *sm)
+{
+  Condition *c = new Condition(e, sm->GetGN(), sm);
+  sm->AddCondition(c);
+
+  return c;
+}
+
 //Function to create new state condition
 Condition *new_state_cond (State *s, StateMachine *sm)
 {
@@ -65,6 +74,7 @@ Condition *new_hs_cond (ActId *id, StateMachine *sm)
   return c;
 }
 
+//Function to create new comma condition
 Condition *new_comma_cond (Comma *comma, StateMachine *sm)
 {
   Condition *c = new Condition(comma, sm->GetCCN(), sm);
@@ -73,6 +83,17 @@ Condition *new_comma_cond (Comma *comma, StateMachine *sm)
   return c;
 }
 
+//Function to create new comma condition starting with a vector
+Condition *new_comma_cond_raw(int type, std::vector<Condition *> &vc, StateMachine *sm)
+{
+  Comma *com = new Comma();
+  com->type = type;
+  com->c = vc;
+  Condition *c = new_comma_cond(com, sm);
+
+  return c;
+}
+//Function to create new single element comma condtion
 Condition *new_single_cond_comma (int type, Condition *cond, StateMachine *sm)
 {
   Comma *com = new Comma();
@@ -83,6 +104,7 @@ Condition *new_single_cond_comma (int type, Condition *cond, StateMachine *sm)
   return c;
 }
 
+//Function to create new two element comma condtion
 Condition *new_two_cond_comma (int type, Condition *cond1, Condition *cond2, StateMachine *sm)
 {
   Condition *c;
@@ -423,8 +445,7 @@ Condition *process_loop (
     if (gg->g) {
       if (gg->s->type != ACT_CHP_SKIP && 
           gg->s->type != ACT_CHP_FUNC) {
-        g = new Condition(gg->g, sm->GetGN(), sm);
-        sm->AddCondition(g);
+        g = new_guard_cond(gg->g, sm);
       } else {
         continue;
       }
@@ -434,56 +455,36 @@ Condition *process_loop (
     }
     vt.push_back(g);
 
-    ss = new State(gg->s->type, sm->GetSize(), sm);
-    sm->AddSize();
-    n.first = ss;
+    ss = new_state(gg->s->type, sm);
+    tmp = new_state_cond(ss,sm);
 
     //If loop is not infinite use guard as a part of the
     ///switching condition
     //If there is no parent condition then using zero state
     //and corresponding guard is enough
-    Comma *par_com = new Comma();
-    par_com->type = 0;
-    if (g != zero_s_cond) {
-      par_com->c.push_back(g);
-    }
-    if (pc) {
-      par_com->c.push_back(pc);
-    }
-    par_com->c.push_back(zero_s_cond);
-    Condition *par_cond = new Condition(par_com, sm->GetCCN(), sm);
-    n.second = par_cond;
-    vc.push_back(par_cond);
-    sm->AddCondition(par_cond);
-    s->AddNextState(n);
+    vc.push_back(zero_s_cond);
+    if (g != zero_s_cond) { vc.push_back(g); }
+    if (pc) { vc.push_back(pc); }
+    Condition *par_cond = new_comma_cond_raw(0, vc, sm);
+    s->AddNextStateRaw(ss, par_cond);
+    vc.clear();
 
     //Create child condition
     if (pc) {
-      Comma *child_com = new Comma;
-      child_com->type = 0;
-      Condition *tmp_cond = new Condition(ss, sm->GetSN(), sm);
-      sm->AddCondition(tmp_cond);
+      int type = 0;
       if (opt >= 2 & inf_flag == 0) {
-        Comma *tmp_com = new Comma();
-        tmp_com->type = 0;
-        tmp_com->c.push_back(tmp_cond);
-        tmp_com->c.push_back(pc);
-        child_com->type = 1;
-        child_com->c.push_back(par_cond);
-        tmp_cond = new Condition(tmp_com, sm->GetCCN(), sm);
-        sm->AddCondition(tmp_cond);
-        child_com->c.push_back(tmp_cond);
+        type = 1;
+        tmp = new_two_cond_comma(0,tmp,pc,sm);
+        vc.push_back(par_cond);
       } else if (opt >= 1) {
-        child_com->c.push_back(tmp_cond);
-        child_com->c.push_back(pc);
-      } else {
-        child_com->c.push_back(tmp_cond);
-      }
-      child_cond = new Condition(child_com, sm->GetCCN(), sm);
+        vc.push_back(pc);
+      } 
+      vc.push_back(tmp);
+      child_cond = new_comma_cond_raw(type,vc,sm);
     } else {
-      child_cond = new Condition(ss, sm->GetSN(), sm);
+      child_cond = tmp;
     }
-    sm->AddCondition(child_cond);
+    vc.clear();
 
     //Traverse lower levels of CHP hierarchy
     if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
@@ -514,56 +515,27 @@ Condition *process_loop (
     //Create iteration condition which is a termination
     //condition of the branch statement
     if (inf_flag == 0 && tmp) {
-      if (opt == 2 && gg->s->type != ACT_CHP_COMMA) {
-        Comma *loop_com = new Comma;
-        loop_com->type = 0;
-        loop_com->c.push_back(tmp);
-        Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
-        n.first = s;
-        n.second = loop_c;
-        sm->AddCondition(loop_c);
-        ss->AddNextState(n);
-      } else {
-        Comma *loop_com = new Comma;
-        loop_com->type = 0;
-        loop_com->c.push_back(tmp);
-        Condition *loop_c = new Condition(loop_com, sm->GetCCN(), sm);
-        n.first = s;
-        n.second = loop_c;
-        sm->AddCondition(loop_c);
-        ss->AddNextState(n);
-      }
+        Condition *loop_c = new_single_cond_comma(0, tmp, sm);
+        ss->AddNextStateRaw(s,loop_c);
     }
   }
+  vc.clear();
 
   //create condition for all negative guards
-  Comma *nguard_com = new Comma;
-  nguard_com->type = 2;
-  nguard_com->c = vt;
-  Condition *nguard_cond = new Condition(nguard_com, sm->GetCCN(), sm);
-  sm->AddCondition(nguard_cond);
+  Condition *nguard_cond = new_comma_cond_raw(2, vt, sm);
 
   //create general loop termination condition
   //when loop is in the zero state and all guards
   //are false
-  Comma *exit_com = new Comma();
-  exit_com->c.push_back(zero_s_cond);
-  exit_com->c.push_back(nguard_cond);
-  if (pc) {exit_com->c.push_back(pc); }
-  exit_com->type = 0;
-  Condition *exit_cond = new Condition(exit_com, sm->GetCCN(), sm);
-  sm->AddCondition(exit_cond);
+  vc.push_back(zero_s_cond);
+  vc.push_back(nguard_cond);
+  if (pc) { vc.push_back(pc); }
+  Condition *exit_cond = new_comma_cond_raw(0, vc, sm);
 
   //Create exit state
-  State *exit_s = new State(ACT_CHP_SKIP, sm->GetSize(), sm);
-  sm->AddSize();
-  n.first = exit_s;
-  n.second = exit_cond;
-
-  Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(), sm);
-  sm->AddCondition(exit_s_cond);
-
-  s->AddNextState(n);
+  State *exit_s = new_state(ACT_CHP_SKIP, sm);
+  Condition *exit_s_cond = new_state_cond(exit_s, sm);
+  s->AddNextStateRaw(exit_s, exit_cond);
 
   //Create condition to return to the zero state
   //If parent condition exists then its negation is the condition
@@ -571,28 +543,17 @@ Condition *process_loop (
   //however it is created just for the consistency of the model
   //and never actually used.
   if (pc || inf_flag == 1) {
-    Comma *npar_com = new Comma;
+    Condition *npar_cond;
     if (pc) {
-      npar_com->type = 2;
-      npar_com->c.push_back(pc);
+      npar_cond = new_single_cond_comma(2, pc, sm);
     } else {
-      npar_com->type = 0;
-      npar_com->c.push_back(exit_cond);
+      npar_cond = new_single_cond_comma(0, exit_cond, sm);
     }
-    Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
-    sm->AddCondition(npar_cond);
-
-    n.first = s;
-    n.second = npar_cond;
-    exit_s->AddNextState(n);
+    exit_s->AddNextStateRaw(s,npar_cond);
   }
 
   //Use exit state as a termination condition
-  Comma *term_com = new Comma;
-  term_com->type = 1;
-  term_com->c.push_back(exit_s_cond);
-  Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-  sm->AddCondition(term_cond);
+  Condition *term_cond = new_single_cond_comma(1,exit_s_cond,sm);
 
   return term_cond;
 
