@@ -46,11 +46,13 @@ void print_array_ref (ActId *id, StateMachine *scope) {
 
   id->sPrint(buf, 1025);
 
-  fprintf(output_file, "\%s ", id->getName());
-  for (int i = 0; i < id->arrayInfo()->nDims(); i++) {
-    fprintf(output_file, "[");
-    PrintExpression(id->arrayInfo()->getDeref(i), scope);
-    fprintf(output_file, " ]");
+  fprintf(output_file, "%s", id->getName());
+  if (id->arrayInfo()) {
+    for (int i = 0; i < id->arrayInfo()->nDims(); i++) {
+      fprintf(output_file, " [");
+      PrintExpression(id->arrayInfo()->getDeref(i), scope);
+      fprintf(output_file, " ]");
+    }
   }
 
   return;
@@ -1170,6 +1172,7 @@ void Variable::PrintVerilog (){
   }
   fprintf(output_file, "\\");
   id->toid()->Print(output_file);
+  fprintf(stdout, " ");
   for (auto i = 1; i < dim.size(); i++) {
     if (isdyn == 1) { fprintf(output_file, " "); }
     fprintf(output_file, "[%i:0]", dim[i]-1);
@@ -1207,6 +1210,21 @@ void Variable::PrintVerilog (){
     }
     tmp_id->Print(output_file);
     fprintf(output_file, "_ready ;\n");
+  } else {
+ //   if (type == 0) {
+ //     fprintf(output_file, "reg\t\\");
+ //   } else {
+ //     fprintf(output_file, "wire\t\\");
+ //   }
+ //   tmp_id->Print(output_file);
+ //   fprintf(output_file, "_valid ;\n");
+ //   if (type == 0) {
+ //     fprintf(output_file, "wire\t\\");
+ //   } else {
+ //     fprintf(output_file, "reg\t\\");
+ //   }
+ //   tmp_id->Print(output_file);
+ //   fprintf(output_file, "_ready ;\n");
   } 
   delete tmp_id;
 }

@@ -100,6 +100,7 @@ public:
   ~State();
 
   void AddNextState(std::pair<State *, Condition *> s);
+  void AddNextStateRaw(State *, Condition *);
 
   int GetType();
   int GetNum();
@@ -189,6 +190,7 @@ public:
   void AddPort(Port *);
   void AddVar(Variable *);
   void AddInst(StateMachineInst *);
+  void AddInstPortPair(act_connection *, Port *);
   void AddArb(Arbiter *a);
 
   int GetSize();
@@ -201,10 +203,12 @@ public:
   StateMachine *GetPar();
   StateMachine *GetNext();
   std::vector<Variable *> GetVars();
+  inline Variable *GetVarRaw(act_connection *c) { return vm[c]; };
   std::vector<Port *> GetPorts();
   Process *GetProc();
   std::vector<StateMachineInst *> GetInst();
   inline int GetType() { return top->GetType(); };
+  int GetInstPortDir(act_connection *);
 
   void PrintParent(StateMachine *, int);
   void PrintPlain();
@@ -232,8 +236,8 @@ private:
   std::map<act_connection*, std::vector<Data *>> hs_data;
 
   std::vector<Port *> ports;
+  std::map<act_connection *, Port *> _ports;  //connection to inst ports mapping
   std::vector<Variable *> vars;
-  //std::map<ValueIdx *, std::vector<Variable *> > vm;
   std::map<act_connection *, Variable *> vm;
 
   std::vector<Condition *> guard_condition;
@@ -392,6 +396,7 @@ public:
   Variable(int, int, ValueIdx *);
   Variable(int, int, ValueIdx *, act_connection *);
   Variable(int, int, int, ValueIdx *, act_connection *);
+  Variable(int, int, int, int, ValueIdx *, act_connection *);
   
   void AddDimension(int);
 

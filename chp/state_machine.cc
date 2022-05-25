@@ -102,6 +102,10 @@ void StateMachine::AddCondition(Condition *c) {
   }
 }
 void StateMachine::AddArb(Arbiter *a) { arb.push_back(a); }
+void StateMachine::AddInstPortPair(act_connection *c, Port *p) {
+  _ports[c] = p;
+  return;
+}
 
 int StateMachine::GetNum(){ return number; }
 int StateMachine::GetSize() { return size; }
@@ -116,6 +120,7 @@ StateMachine *StateMachine::GetPar() { return par; }
 StateMachine *StateMachine::GetNext() { return next; }
 Process *StateMachine::GetProc() { return p; }
 std::vector<StateMachineInst *> StateMachine::GetInst() { return inst; }
+int StateMachine::GetInstPortDir(act_connection *c) { return _ports[c]->GetDir(); }
 
 void StateMachine::SetNext(StateMachine *smn) { next = smn; }
 void StateMachine::SetProcess(Process *p_) { p = p_; }
@@ -225,6 +230,12 @@ bool State::isPrinted() {
 }
 
 void State::AddNextState(std::pair<State *, Condition *> s) { ns.push_back(s); }
+void State::AddNextStateRaw(State *s, Condition *c) { 
+  std::pair<State *, Condition *> n;
+  n.first = s;
+  n.second = c;
+  ns.push_back(n);
+}
 
 int State::GetType() { return type; }
 int State::GetNum() { return number; }

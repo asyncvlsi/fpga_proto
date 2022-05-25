@@ -183,4 +183,15 @@ Variable::Variable(int type_, int ischan_, int isport_,
 	vx = vx_;
 	id = id_;
 }
+
+Variable::Variable(int type_, int ischan_, int isport_, int isdyn_,
+										ValueIdx *vx_, act_connection *id_) {
+  type = type_;
+	ischan = ischan_;
+	isport = isport_;
+  isdyn = isdyn_;
+	vx = vx_;
+	id = id_;
+}
+
 }
