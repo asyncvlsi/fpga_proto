@@ -256,9 +256,7 @@ Condition *process_send (
   Condition *exit_s_cond = new_state_cond(exit_s,sm);
 
   //Add exit state to the init state
-  n.first = exit_s;
-  n.second = exit_cond;
-  s->AddNextState(n);
+  s->AddNextStateRaw(exit_s, exit_cond);
 
   //Processing channel by finding its direction
   //and bitwidth in the booleanize data structure
@@ -267,18 +265,7 @@ Condition *process_send (
   Data *d = NULL;
   act_connection *chan_con;
   chan_con = chan_id->Canonical(scope);
-  ValueIdx *chan_vx = chan_id->rootVx(scope);
 
-  int chan_w = 0;
-  ihash_bucket_t *hb;
-  act_booleanized_var_t *bv;
-  act_dynamic_var_t *dv;
-
-  hb = ihash_lookup(bnl->cH, (long)chan_con);
-  bv = (act_booleanized_var_t *)hb->v;
-  chan_w = bv->width;
-
-  std::vector<ActId *> var_col;
   Expr *se = chp_lang->u.comm.e;
   if (!se) {
     Expr *dex = NULL;
@@ -300,27 +287,18 @@ Condition *process_send (
   //Create return condition when parent
   //machine switches from the current state
   if (pc) {
-    Comma *npar_com = new Comma();
-    npar_com->type = 2;
-    npar_com->c.push_back(pc);
-    Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
-    sm->AddCondition(npar_cond);
-    n.first = s;
-    n.second = npar_cond;
-    exit_s->AddNextState(n);
+    Condition *npar_cond = new_single_cond_comma(2, pc, sm);
+    exit_s->AddNextStateRaw(s, npar_cond);
   }
 
   //Terminate condition is when send machine is in
   //the exit state 
-  Comma *term_com = new Comma();
-  term_com->type = 1;
-  //TODO: This is for later
+  Condition *term_cond;
   if (opt >= 2) {
-    term_com->c.push_back(commu_compl);
+    term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
+  } else {
+    term_cond = new_single_cond_comma(1, exit_s_cond, sm);
   }
-  term_com->c.push_back(exit_s_cond);
-  Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-  sm->AddCondition(term_cond);
 
   return term_cond;
 
