@@ -771,7 +771,6 @@ Condition *process_select (
   Scope *scope;
   scope = proc->CurScope();
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
-  Condition *tmp = NULL;
 
   //Selection is a control statement. It waits until a guard
   //is true and executes selected branch. Its completion 
@@ -824,12 +823,12 @@ Condition *process_select (
         continue;
       }
     }
-  } 
+  }
 
   //Process all selection options
   if (empty_select == 0) {
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-    
+
       //If guard is not NULL
       if (gg->g) {
         if (gg->s && gg->s->type != ACT_CHP_SKIP
@@ -842,9 +841,9 @@ Condition *process_select (
       //Guard is NULL then it is an else statement
       } else {
         if (gg->s->type == ACT_CHP_FUNC) {
-          char tmp[1024] = "log";
-          if (strcmp(tmp, gg->s->u.func.name->s) != 0){
-            fprintf(stdout, "%s\n", tmp);
+          char tmp_f[1024] = "log";
+          if (strcmp(tmp_f, gg->s->u.func.name->s) != 0){
+            fprintf(stdout, "%s\n", tmp_f);
             fatal_error("I don't know this function");
           }
         }
@@ -853,15 +852,16 @@ Condition *process_select (
       }
 
       //If statement is not NULL
+      Condition *tmp = NULL;
       if (gg->s) {
         //Create dummy skip state for skip and func statements
         //with a valid guard
-        if (gg->s->type != ACT_CHP_FUNC ||
-            gg->s->type != ACT_CHP_SKIP) {
+        if (gg->s->type != ACT_CHP_FUNC || gg->s->type != ACT_CHP_SKIP) {
           ss = new_state(gg->s->type, sm);
         } else {
           ss = new_state(ACT_CHP_SKIP, sm);
         }
+        tmp = new_state_cond(ss, sm);
 
         vg.push_back(zero_s_cond);
         if (pc) { vg.push_back(zero_s_cond); }
@@ -887,24 +887,22 @@ Condition *process_select (
         //Create child conditions using execution states
         Condition *tmp_cond = NULL;
         if (pc) {
-          Comma *child_com = new Comma;
-          child_com->type = 0;
           tmp_cond = new_state_cond(ss, sm);
-          child_com->c.push_back(tmp_cond);
-          if (opt >= 1) { child_com->c.push_back(pc); }
-          child_cond = new Condition(child_com, sm->GetCCN(), sm);
+          vg.push_back(tmp);
+          if (opt >= 1) { vg.push_back(pc); }
+          child_cond = new_comma_cond_raw(0, vg, sm);
         } else {
-          child_cond = new Condition(s, sm->GetSN(), sm);
+          child_cond = new_state_cond(s, sm);
         }
-        sm->AddCondition(child_cond);
+        vg.clear();
+
         //Traverse the rest of the hierarchy
         if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
           tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
           sm->AddCondition(tmp);
         //If statement if skip of func then use execution state
         //as a termination condition
-        } else if (gg->s->type == ACT_CHP_SKIP ||
-                   gg->s->type == ACT_CHP_FUNC ){
+        } else if (gg->s->type == ACT_CHP_SKIP || gg->s->type == ACT_CHP_FUNC ) {
           if (tmp_cond) {
             tmp = tmp_cond;
           } else {
@@ -935,8 +933,7 @@ Condition *process_select (
     State *exit_s = new_state(ACT_CHP_SKIP, sm);
     ss->AddNextStateRaw(exit_s, exit_cond);
     
-    Condition *exit_s_cond = new Condition(exit_s, sm->GetSN(),sm);
-    sm->AddCondition(exit_s_cond);
+    Condition *exit_s_cond = new_state_cond(exit_s, sm);
     vc.push_back(exit_s_cond);
 
     //TODO: this is for later
@@ -946,23 +943,13 @@ Condition *process_select (
     //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
 
     //Create termination condition which is an exit state
-    Comma *term_com = new Comma;
-    term_com->type = 1;
-    term_com->c.push_back(exit_s_cond); 
-    Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-    sm->AddCondition(term_cond);
+    Condition *term_cond = new_single_cond_comma(1, exit_s_cond, sm);
 
     //Return to the initial state when parent is not in 
     //the right state
     if (pc) {
-      Comma *npar_com = new Comma;
-      npar_com->type = 2;
-      npar_com->c.push_back(pc);
-      Condition *npar_cond = new Condition(npar_com, sm->GetCCN(), sm);
-      sm->AddCondition(npar_cond);
-      n.first = s;
-      n.second = npar_cond;
-      exit_s->AddNextState(n);
+      Condition *npar_cond = new_single_cond_comma(2, pc, sm);
+      exit_s->AddNextStateRaw(s, npar_cond);
     }
 
     return term_cond;
