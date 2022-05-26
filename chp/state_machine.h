@@ -39,6 +39,8 @@ public:
   int GetNum();
   StateMachine *GetScope();
 
+  inline void MkArb(){ type = 4; };
+
   void PrintPlain();
   //f=0 - Name
   //f=1 - Name + Expression 

@@ -103,6 +103,7 @@ Condition *new_comma_cond_raw(int type, std::vector<Condition *> &vc, StateMachi
 
   return c;
 }
+
 //Function to create new single element comma condtion
 Condition *new_single_cond_comma (int type, Condition *cond, StateMachine *sm)
 {
@@ -596,7 +597,6 @@ Condition *process_select_nondet (
 
   //Check if the selection statement is empty
   for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-
     if (gg->g) {
       if (gg->s && gg->s->type != ACT_CHP_SKIP &&
                    gg->s->type != ACT_CHP_FUNC) {
@@ -863,7 +863,7 @@ Condition *process_select (
         //Traverse the rest of the hierarchy
         if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
           tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
-          sm->AddCondition(tmp);
+//          sm->AddCondition(tmp);
         //If statement if skip of func then use execution state
         //as a termination condition
         } else if (gg->s->type == ACT_CHP_SKIP || gg->s->type == ACT_CHP_FUNC ) {
@@ -946,8 +946,7 @@ Condition *process_semi (
   //first statement which is initiated by the parent
   //condition. If semi is a top statement then first
   //statement in the list is a top level machine
-
-  std::pair<State *, Condition *> n;
+  std::vector<Condition *> vc;
 
   list_t *l = NULL;
   listitem_t *li = NULL;
@@ -960,7 +959,6 @@ Condition *process_semi (
   int first_skip = 0;
 
   Comma *first_com = new Comma();
-  first_com->type = 0;
   Condition *first_cond = NULL;
 
   Comma *tmp_com = new Comma();
@@ -989,13 +987,9 @@ Condition *process_semi (
           tmp_com->type = 2;
           tmp_cond = new Condition (tmp_com, sm->GetCCN(), sm);
           sm->AddCondition(tmp_cond);
-          first_com->type = 0;
-          first_com->c.push_back(tmp_cond);
-          if (pc) {
-            first_com->c.push_back(pc);
-          }
-          first_cond = new Condition(first_com, sm->GetCCN(), sm);
-          sm->AddCondition(first_cond);
+          vc.push_back(tmp_cond);
+          if (pc) { vc.push_back(pc); }
+          first_cond = new_comma_cond_raw(0, vc, sm);
           child_cond = first_cond;
         } else {
           if (pc) {
@@ -1008,10 +1002,8 @@ Condition *process_semi (
         if (opt >= 1) {
           Comma *child_com = new Comma();
           child_com->type = 0;
-          if (pc) {
-            child_com->c.push_back(pc);
-          }
           child_com->c.push_back(tmp);
+          if (pc) { child_com->c.push_back(pc); }
           child_cond = new Condition(child_com, sm->GetCCN(), sm);
           sm->AddCondition(child_cond);
         } else {
@@ -1029,10 +1021,8 @@ Condition *process_semi (
       //case scenario
       } else if (cl->type == ACT_CHP_COMMA) {
         if (!pc & !child_cond) {
-          State *dum_st = new State(ACT_CHP_COMMA, 0, sm);
-          sm->SetFirstState(dum_st);
-          Condition *zero_s_cond = new Condition(dum_st, sm->GetSN(), sm);
-          sm->AddCondition(zero_s_cond);
+          State *dum_st = new_state(ACT_CHP_COMMA, sm);
+          Condition *zero_s_cond = new_state_cond(dum_st, sm);
           child_cond = zero_s_cond;
         }
         tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_SEMI, opt);
@@ -1042,10 +1032,7 @@ Condition *process_semi (
         if (sm->IsEmpty()) {
           tmp = traverse_chp(proc, cl, sm, sm, child_cond, ACT_CHP_SEMI, opt);
         } else {
-          StateMachine *csm = new StateMachine();
-          csm->SetNumber(sm->GetKids());
-          csm->SetParent(sm);
-          csm->SetProcess(sm->GetProc());
+          StateMachine *csm = init_state_machine(sm);
           tmp = traverse_chp(proc, cl, csm, tsm, child_cond, ACT_CHP_SEMI, opt);
           if (tmp) {
             sm->AddKid(csm);
@@ -1096,7 +1083,6 @@ Condition *process_comma (
   //then execution is synchronized by pc otherwise a 
   //dummy state is created at the higher level(e.g. first 
   //statement in the SEMI chain) 
-
   std::pair<State *, Condition *> n;
   std::vector<Condition *> vc;
 
@@ -1119,8 +1105,7 @@ Condition *process_comma (
     cl = (act_chp_lang_t *)list_value(li);
 
     //ignore skip and func statements
-    if (cl->type == ACT_CHP_SKIP || 
-        cl->type == ACT_CHP_FUNC) {
+    if (cl->type == ACT_CHP_SKIP || cl->type == ACT_CHP_FUNC) {
       continue;
     }
 
@@ -1134,10 +1119,7 @@ Condition *process_comma (
       if (sm->IsEmpty()) {
         tmp = traverse_chp(proc, cl, sm, sm , child_cond, ACT_CHP_COMMA, opt);
       } else {
-        StateMachine *csm = new StateMachine();
-        csm->SetNumber(sm->GetKids());
-        csm->SetParent(sm);
-        csm->SetProcess(sm->GetProc());
+        StateMachine *csm = init_state_machine(sm);
         tmp = traverse_chp(proc, cl, csm, tsm , child_cond, ACT_CHP_COMMA, opt);
         if (tmp) {
           sm->AddKid(csm);
@@ -1153,17 +1135,13 @@ Condition *process_comma (
     if (tmp) {
       vc.push_back(tmp);
     }
-
   }
 
   //create general termination conditon using
   //ANDed child termination conditions, i.e.
   //child_term1 & child_term2 & ... & child_termN
   if (vc.size() > 0) {
-    Comma *term_com = new Comma;
-    term_com->type = 0;
-    term_com->c = vc;
-    Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+    Condition *term_cond = new_comma_cond_raw(0, vc, sm);
     return term_cond;
   } else {
     return NULL;
