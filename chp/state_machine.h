@@ -42,18 +42,18 @@ public:
   inline void MkArb(){ type = 4; };
 
   void PrintPlain();
-  //f=0 - Name
-  //f=1 - Name + Expression 
-  //f=2 - Expression
-  void PrintVerilog(int f);
+  void PrintVerilogDecl(std::string &);
+  void PrintVerilogDeclRaw(std::string &);
+  void PrintVerilogExpr(std::string &);
+  void PrintScopeParam(StateMachine *sc, std::string &);
+  void PrintScopeVar(StateMachine *, std::string &);
 
   //might be not the best idea, but I need it... :(
   State *GetState();
 
 private:
   
-  void PrintExpr(Expr *);
-  void PrintScope(StateMachine *sc, int);
+  void PrintExpr(Expr *, std::string &);
 
   int type; //0 - communication completion
             //1 - selection/loop guard
@@ -110,8 +110,9 @@ public:
   StateMachine *GetPar();
 
   void PrintPlain(int p = 1);
-  void PrintVerilog(int p = 1);
-  void PrintVerilogName(int);
+  void PrintVerilog(std::string &);
+  void PrintScopeVar(StateMachine *p, std::string &);
+  void PrintScopeParam(StateMachine *p, std::string &);
   bool isPrinted();
   void PrintType();
 
@@ -213,9 +214,16 @@ public:
   int GetInstPortDir(act_connection *);
 
   void PrintParent(StateMachine *, int);
+  void PrintScopeVar(StateMachine *, std::string &);
+  void PrintScopeParam(StateMachine *, std::string &);
   void PrintPlain();
   void PrintVerilog();
+  void PrintVerilogBody();
   void PrintVerilogHeader(int sv);
+  void PrintVerilogWires();
+  void PrintVerilogVars();
+  void PrintVerilogData();
+  void PrintVerilogDataHS();
 
 private:
 
@@ -250,9 +258,7 @@ private:
   std::vector<Arbiter *> arb;
 
   void PrintPlainState(std::vector<std::pair<State *, Condition *>> s);
-  void PrintVerilogState(std::vector<std::pair<State *, Condition *>> s);
-  void PrintVerilogWires();
-  void PrintVerilogVars();
+  void PrintVerilogState(std::vector<std::pair<State *, Condition *>> s, std::string &);
   void PrintVerilogParameters();
   void PrintSystemVerilogParameters(int);
 
@@ -305,10 +311,9 @@ public:
   ActId *GetId();
 
   void PrintPlain();
-  void PrintVerilogCondition(int);
-  void PrintVerilogConditionUP(int);
-  void PrintVerilogAssignment();
-  void PrintVerilogHS(int);
+  void PrintVerilog(int, std::string&);
+  void PrintVerilogHS(int, std::string&);
+  void PrintVerilogAssignment(std::string &);
 
 private:
 
@@ -372,8 +377,8 @@ public:
   void SetInst();
   void SetCtrlChan();
 
-  void Print();
-  void PrintName(int func = 0);
+  void PrintVerilog();
+  void PrintName(std::string &);
 
 private:
 

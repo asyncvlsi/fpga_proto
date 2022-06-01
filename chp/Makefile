@@ -24,7 +24,7 @@ TARGETS=$(EXE)
 TARGETINCS=state_machine.h
 TARGETINCSUBDIR=act
 
-OBJS=main.o state_machine.o build_machine.o print.o data_path.o
+OBJS=main.o state_machine.o build_machine.o verilog_print.o data_path.o
 
 SRCS=$(OBJS:.o=.cc)
 
