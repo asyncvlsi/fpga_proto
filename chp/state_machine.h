@@ -442,7 +442,7 @@ public:
 
   void AddElement(Condition *c);
 
-  void PrintArbiter();
+  void PrintArbiter(FILE *);
   void PrintInst(int n);
 
 private:

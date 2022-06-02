@@ -10,28 +10,25 @@ static ActBooleanizePass *BOOL = NULL;
 
 void PrintExpression(Expr *, StateMachine *, std::string &);
 
-void get_module_name (Process *p) {
+void get_module_name (Process *p, std::string &str) {
 
   const char *mn = p->getName();
   int len = strlen(mn);
-  std::string buf;
 
   for (auto i = 0; i < len; i++) {
     if (mn[i] == 0x3c) {
-      buf += "_";
+      str += "_";
       continue;
     } else if (mn[i] == 0x3e) {
-      buf += "_";
+      str += "_";
       continue;
     } else if (mn[i] == 0x2c) {
-      buf += "_";
+      str += "_";
       continue;
     } else {
-      buf += mn[i];
+      str += mn[i];
     }
   }
-
-  fprintf(output_file, "%s", buf.c_str());
 
   return;
 }
@@ -85,7 +82,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_MOD): {
-      PrintExpression(e->u.e.l, scope, str); str += " %% "; PrintExpression(e->u.e.r, scope, str);
+      PrintExpression(e->u.e.l, scope, str); str += " % "; PrintExpression(e->u.e.r, scope, str);
       break;
     }
     case (E_LSL): {
@@ -392,6 +389,11 @@ void Condition::PrintVerilogDecl(std::string &name) {
     break;
   case (4) :
     name +=  "excl_guard_";
+    name += std::to_string(num);
+    name += ";\n";
+    name += "wire ";
+    PrintScopeVar(scope, name);
+    name +=  "guard_";
     break;
   default :
     fatal_error("!!!\n");
@@ -600,9 +602,7 @@ void StateMachine::PrintVerilogHeader(int sv) {
   if (p) {
     header += "`timescale 1ns/1ps\n\n";
     header += "module \\";
-    fprintf(output_file, "%s", header.c_str());
-    header.clear();
-    get_module_name(p);
+    get_module_name(p, header);
     header += " (\n";
     header += "\t input\t\\clock\n";
     header += "\t,input\t\\reset\n";
@@ -851,8 +851,8 @@ void Port::PrintName(std::string &str){
 void StateMachineInst::PrintVerilog(){
 
   std::string inst = "\\";
-  get_module_name(p);
-  inst = inst + "\\" + name->getName();
+  get_module_name(p, inst);
+  inst = inst + " \\" + name->getName();
   if (array) {
     inst += array;
   }
@@ -879,7 +879,8 @@ void StateMachineInst::PrintVerilog(){
       inst += "_valid )\n";
     }
   }
-  fprintf(output_file, ");\n\n");
+  inst += ");\n\n";
+  fprintf(output_file, "%s", inst.c_str());
   return;
 }
 
@@ -972,8 +973,8 @@ void Arbiter::PrintInst(int n) {
 
   std::string arb;
 
-  arb += "fair_hi #(\n\t.WIDTH(" + std::to_string(a.size()) + "\n";
-  arb += ") arb_" + std::to_string(n) + "(\n";
+  arb += "fair_hi #(\n\t.WIDTH(" + std::to_string(a.size()) + ")\n";
+  arb += ") arb_" + std::to_string(n) + " (\n";
   arb += "\t .\\clock (\\clock )\n\t,.\\reset (\\reset )\n\t,.req ({";
 
   for (auto i : a) {
@@ -1004,7 +1005,7 @@ void Arbiter::PrintInst(int n) {
   return;
 }
 
-void Arbiter::PrintArbiter(){
+void Arbiter::PrintArbiter(FILE *fout){
 std::string arb;
 arb += "`timescale 1ns/1ps\n";
 arb += "module fair_hi #(\n";
@@ -1076,7 +1077,7 @@ arb += "end\n";
 arb += "endgenerate\n";
 arb += "\t\n";
 arb += "endmodule\n";
-fprintf(output_file, "%s", arb.c_str());
+fprintf(fout, "%s", arb.c_str());
 arb.clear();
 return;
 }

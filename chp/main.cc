@@ -143,7 +143,7 @@ int main (int argc, char **argv) {
   
   if (parb == 1) {
 	  fpga::Arbiter *arb = new fpga::Arbiter();
-	  arb->PrintArbiter();
+	  arb->PrintArbiter(fout);
   }
   
   cp->PrintVerilog(a, sv, fout);

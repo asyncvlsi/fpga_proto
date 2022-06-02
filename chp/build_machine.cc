@@ -210,7 +210,7 @@ Condition *process_recv (
     for (auto pp : tsm->GetPorts()) {
       pp->GetCon()->toid()->sPrint(tmp2, 1024);
       if (strcmp(tmp1, tmp2) == 0) {
-        pp->SetCtrlChan();
+//        pp->SetCtrlChan();
         found = 1;
         break;
       }
@@ -304,7 +304,7 @@ Condition *process_send (
     for (auto pp : tsm->GetPorts()) {
       pp->GetCon()->toid()->sPrint(tmp2, 1024);
       if (strcmp(tmp1, tmp2) == 0) {
-        pp->SetCtrlChan();
+//        pp->SetCtrlChan();
       }
     }
   }
@@ -1287,7 +1287,7 @@ void map_instances(CHPProject *cp){
           inst->SetSM(pr1);
           for (auto i = 0; i < pr1->GetPorts().size(); i++) {
             if (pr1->GetPorts()[i]->GetChan() == 2) {
-              inst->SetCtrlChan(i);
+//              inst->SetCtrlChan(i);
             }
           }
         }
@@ -1435,17 +1435,15 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     var = new Variable(type, chan, port, dyn, vx, id);
     
     var->AddDimension(bv->width-1);
-    if (id->toid()->arrayInfo() && id->toid()->isDynamicDeref()) {
-      Array *var_a;
-      InstType *it = cs->FullLookup(id->toid(), &var_a);
-      var_a = it->arrayInfo();
-//id->toid()->Print(stdout); fprintf(stdout, " <= \n");
-//fprintf(stdout, "-----> %i\n", var_a->nDims());
-      for (auto i = 0; i < var_a->nDims(); i++) {
-        int dim_size = var_a->range_size(i);
-        var->AddDimension(dim_size-1);
-      }
-    }
+    //if (id->toid()->arrayInfo()) {// && id->toid()->isDynamicDeref()) {
+    //  Array *var_a;
+    //  InstType *it = cs->FullLookup(id->toid(), &var_a);
+    //  var_a = it->arrayInfo();
+    //  for (auto i = 0; i < var_a->nDims(); i++) {
+    //    int dim_size = var_a->range_size(i);
+    //    var->AddDimension(dim_size-1);
+    //  }
+    //}
     tsm->AddVar(var);
   }
 
