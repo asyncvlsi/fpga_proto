@@ -193,10 +193,12 @@ Condition *process_recv (
   ActId *var_id = chp_lang->u.comm.var;
 
   act_connection *var_con = NULL;
-  if (BOOL->isDynamicRef(bnl, var_id)) {
-    var_con = BOOL->isDynamicRef(bnl, var_id)->id;
-  } else {
-    var_con = var_id->Canonical(scope);
+  if (var_id) {
+    if (BOOL->isDynamicRef(bnl, var_id)) {
+      var_con = BOOL->isDynamicRef(bnl, var_id)->id;
+    } else {
+      var_con = var_id->Canonical(scope);
+    }
   }
 
   if (!var_id) {
@@ -500,7 +502,7 @@ Condition *process_loop (
       tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_INF_LOOP, opt);
     }
 
-    if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
+    if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI || inf_flag == 1) {
       sm->AddCondition(tmp);
     } else {
       if (tmp) {
@@ -626,7 +628,6 @@ Condition *process_select_nondet (
           guard = new_guard_cond(gg->g, sm);
           Condition *arb_guard = guard;
           arb_guard->MkArb();
-          sm->AddCondition(arb_guard);
           arb->AddElement(arb_guard);
         } else {
           continue;
@@ -640,15 +641,15 @@ Condition *process_select_nondet (
         if (pc) { vg.push_back(pc); }
         vg.push_back(guard);
 
-        Condition *full_guard = new_comma_cond_raw(0,vg, sm);
+        Condition *full_guard = new_comma_cond_raw(0, vg, sm);
+
         s->AddNextStateRaw(ss,full_guard);
-        sm->AddCondition(full_guard);
         vg.clear();
 
         Condition *tmp_cond = NULL;
         if (pc) {
           tmp_cond = new_state_cond(ss, sm);
-          vg.push_back(tmp);
+          vg.push_back(tmp_cond);
           if (opt >= 1) { vg.push_back(pc); }
           child_cond = new_comma_cond_raw(0, vg, sm);
         } else {
@@ -659,7 +660,7 @@ Condition *process_select_nondet (
         //Traverse the rest of the hierarchy
         if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
           tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT_NONDET, opt);
-          sm->AddCondition(tmp);
+          //sm->AddCondition(tmp);
         //If statement if skip of func then use execution state
         //as a termination condition
         } else if (gg->s->type == ACT_CHP_SKIP || gg->s->type == ACT_CHP_FUNC ) {
@@ -863,7 +864,6 @@ Condition *process_select (
         //Traverse the rest of the hierarchy
         if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
           tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
-//          sm->AddCondition(tmp);
         //If statement if skip of func then use execution state
         //as a termination condition
         } else if (gg->s->type == ACT_CHP_SKIP || gg->s->type == ACT_CHP_FUNC ) {
@@ -1229,10 +1229,8 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   unsigned int chan = 0;
   ihash_bucket *hb;
   int reg = 1;
-//bnl->p->Print(stdout);
   for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
     if (bnl->chpports[i].omit) { continue; }
-//fprintf(stdout, "THERE\n");
     reg = 1;
     tmp_id = bnl->chpports[i].c->toid();
     tmp_v = tmp_id->rootVx(cs);
@@ -1240,16 +1238,9 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     tmp_d = bnl->chpports[i].input;
 
     hb = ihash_lookup(bnl->cH, (long)tmp_c);
-//tmp_id->Print(stdout);
-//if (hb) fprintf(stdout, " TIK1\n");
-//else fprintf(stdout, " TOK1\n");
     act_booleanized_var_t *bv;
-//fprintf(stdout, "BANG\n");
     bv = (act_booleanized_var_t *)hb->v;
-//if (bv) fprintf(stdout, "TIK2\n");
-//else fprintf(stdout, "TOK2\n");
-//fprintf(stdout, "BOOM\n");
-//
+    
     tmp_w = bv->width;
     chan = bv->ischan;
 
@@ -1262,12 +1253,6 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
       }
     }
 
-//tmp_c->toid()->Print(stdout);
-//fprintf(stdout, " %s \n", tmp_v->getName());
-//fprintf(stdout, " D %i \n", tmp_d);
-//fprintf(stdout, " W %i \n", tmp_w);
-//fprintf(stdout, " C %i \n", chan);
-//fprintf(stdout, " R %i \n", reg);
     Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
     sm->AddPort(p);
   }
@@ -1446,14 +1431,16 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     chan = bv->ischan;
     port = bv->ischpport;
     dyn = 0;
-
+    
     var = new Variable(type, chan, port, dyn, vx, id);
-
+    
     var->AddDimension(bv->width-1);
-    if (id->toid()->arrayInfo()) {
+    if (id->toid()->arrayInfo() && id->toid()->isDynamicDeref()) {
       Array *var_a;
       InstType *it = cs->FullLookup(id->toid(), &var_a);
       var_a = it->arrayInfo();
+//id->toid()->Print(stdout); fprintf(stdout, " <= \n");
+//fprintf(stdout, "-----> %i\n", var_a->nDims());
       for (auto i = 0; i < var_a->nDims(); i++) {
         int dim_size = var_a->range_size(i);
         var->AddDimension(dim_size-1);
@@ -1468,14 +1455,14 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     act_dynamic_var_t *dv = (act_dynamic_var_t *)hb->v;
     id = dv->id;
     vx = id->toid()->rootVx(cs);
-
+  
     type = 0;
     chan = 0;
     port = 0;
     dyn = 1;
-
+  
     var = new Variable(type, chan, port, dyn, vx, id);
-
+  
     var->AddDimension(dv->width-1);
     for (auto i = 0; i < dv->a->nDims(); i++) {
       var->AddDimension(dv->a->range_size(i));

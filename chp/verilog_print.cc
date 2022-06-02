@@ -337,7 +337,7 @@ void Condition::PrintVerilogExpr(std::string &name) {
       break;
     case (3) :
       name = name + "cond_" + std::to_string(num) + " = ";
-      for (auto cc : u.c->c) {  
+      for (auto cc : u.c->c) {
         if (u.c->type == 2) { name += "!"; }
         PrintScopeVar(cc->GetScope(),name);
         if (cc->GetType() == 0) {
@@ -944,9 +944,7 @@ void StateMachine::PrintVerilog() {
   PrintVerilogData();
   PrintVerilogDataHS();
  
-  for (auto i : inst) {
-    i->PrintVerilog();
-  }
+  for (auto i : inst) { i->PrintVerilog(); }
  
   if (!par) {
     fprintf(output_file, "\n\nendmodule\n\n");

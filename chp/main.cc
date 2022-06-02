@@ -138,7 +138,7 @@ int main (int argc, char **argv) {
 	Assert (BOOL->run(p), "Booleanize pass failed");
 
   fpga::CHPProject *cp;
- 
+
   cp = fpga::build_machine(a,p,opt);
   
   if (parb == 1) {
