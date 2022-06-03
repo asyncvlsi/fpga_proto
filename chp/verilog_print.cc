@@ -13,6 +13,20 @@ void PrintExpression(Expr *, StateMachine *, std::string &);
 void get_module_name (Process *p, std::string &str) {
 
   const char *mn = p->getName();
+  std::string tmp1 = "";
+  std::string tmp2 = "";
+
+  if (p->getns() && p->getns()->Parent()) {
+    ActNamespace *an = p->getns();
+    tmp1 = tmp2 + an->getName() + "_" + tmp1;
+    an = an->Parent();
+    while (an->Parent()) {
+      tmp1 = tmp2 + an->getName() + "_" + tmp1;
+      an = an->Parent();
+    }
+  }
+  str += tmp1;
+
   int len = strlen(mn);
 
   for (auto i = 0; i < len; i++) {
@@ -339,7 +353,7 @@ void Condition::PrintVerilogExpr(std::string &name) {
         PrintScopeVar(cc->GetScope(),name);
         if (cc->GetType() == 0) {
           name = name + "commu_compl_" + std::to_string(cc->GetNum());
-        } else if (cc->GetType() == 1) {
+        } else if (cc->GetType() == 1 || cc->GetType() == 4) {
           name = name + "guard_" + std::to_string(cc->GetNum());
         } else if (cc->GetType() == 2) {
           State *ss = cc->GetState();
@@ -389,11 +403,11 @@ void Condition::PrintVerilogDecl(std::string &name) {
     break;
   case (4) :
     name +=  "excl_guard_";
-    name += std::to_string(num);
-    name += ";\n";
-    name += "wire ";
-    PrintScopeVar(scope, name);
-    name +=  "guard_";
+   name += std::to_string(num);
+   name += ";\n";
+   name += "wire ";
+   PrintScopeVar(scope, name);
+   name +=  "guard_";
     break;
   default :
     fatal_error("!!!\n");
@@ -488,9 +502,6 @@ void StateMachine::PrintVerilogWires() {
 
   for (auto cc : guard_condition) {
     cc->PrintVerilogDecl(wire);
-    if (cc->GetType() == 4) {
-      cc->PrintVerilogDecl(wire);
-    }
   }
 
   for (auto cc : state_condition) {
