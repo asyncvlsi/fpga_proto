@@ -503,7 +503,7 @@ Condition *process_loop (
     }
 
     if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI || inf_flag == 1) {
-      sm->AddCondition(tmp);
+//      sm->AddCondition(tmp);
     } else {
       if (tmp) {
         sm->AddKid(csm);
@@ -622,18 +622,15 @@ Condition *process_select_nondet (
     for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
    
       //No NULL guard is possible unlike in the DET SELECTION
-      if (gg->g) {
-        if (gg->s && gg->s->type != ACT_CHP_SKIP
-                  && gg->s->type != ACT_CHP_FUNC) {
-          guard = new_guard_cond(gg->g, sm);
-          Condition *arb_guard = guard;
-          arb_guard->MkArb();
-          arb->AddElement(arb_guard);
-        } else {
-          continue;
-        }
+      if (gg->s && gg->s->type != ACT_CHP_SKIP
+                && gg->s->type != ACT_CHP_FUNC) {
+        guard = new_guard_cond(gg->g, sm);
+        guard->MkArb();
+        arb->AddElement(guard);
+      } else {
+        continue;
       }
-    
+
       if (gg->s) {
         ss = new_state(gg->s->type,sm);
     
@@ -1026,7 +1023,7 @@ Condition *process_semi (
           child_cond = zero_s_cond;
         }
         tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_SEMI, opt);
-        sm->AddCondition(tmp);
+//        sm->AddCondition(tmp);
       //The rest statement cases
       } else {
         if (sm->IsEmpty()) {
@@ -1114,7 +1111,7 @@ Condition *process_comma (
     //TODO: check if a comma inside a comma is possible :)
     if (cl->type == ACT_CHP_COMMA || cl->type == ACT_CHP_SEMI) {
       tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_COMMA, opt);
-      sm->AddCondition(tmp); //TODO: check this. Not sure yet
+//      sm->AddCondition(tmp); //TODO: check this. Not sure yet
     } else {
       if (sm->IsEmpty()) {
         tmp = traverse_chp(proc, cl, sm, sm , child_cond, ACT_CHP_COMMA, opt);
@@ -1310,10 +1307,10 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
       continue;
     }
-    
+
     act_boolean_netlist_t *sub;
     sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
-    
+
     int ports_exist = 0;
     for (int j = 0; j < A_LEN(sub->chpports); j++) {
       if (sub->chpports[j].omit == 0) {
@@ -1330,19 +1327,20 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
             char *ar = as->string();
             std::vector<Port *> ports;
             for (auto j = 0; j < A_LEN(sub->chpports); j++){
-              if (sub->chpports[j].omit) { continue; }
+              if (sub->chpports[j].omit == 1) { continue; }
               act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-              ValueIdx *vv = c->toid()->rootVx(cs);           
-            
+              ValueIdx *vv = c->toid()->rootVx(cs);
+
               ihash_bucket *hb;
               hb = ihash_lookup(bnl->cH, (long)c);
               act_booleanized_var_t *bv;
               bv = (act_booleanized_var_t *)hb->v;
-              
+              if (bv->used == 0) { continue; } 
+
               int dir = sub->chpports[j].input;
               int width = bv->width;
               int ischan = bv->ischan;
-              
+
               Port *ip = new Port(dir,width,ischan,0,vv, c);
               ip->SetInst();
               ports.push_back(ip);
@@ -1359,7 +1357,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
         char *ar = NULL;
         std::vector<Port *> ports;
         for (auto j = 0; j < A_LEN(sub->chpports); j++){
-          if (sub->chpports[j].omit) { continue; }
+          if (sub->chpports[j].omit == 1) { continue; }
           act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
           ValueIdx *vv = c->toid()->rootVx(cs);
           
@@ -1399,6 +1397,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
 
   int is_port = 0;
   int is_i_port = 0;
+  int io = 0;
 
   phash_bucket_t *hb;
   phash_iter_t hi;
@@ -1408,42 +1407,48 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
   while (hb = phash_iter_next(bnl->cH, &hi)) {
     act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
     is_port = bv->ischpport;
-    for (auto j = 0; j < A_LEN(bnl->instchpports); j++) {
-      act_connection *c = bnl->instchpports[j]->toid()->Canonical(cs);
-      if (bv->id == c) {
-        is_i_port = 1;
-        break;
-      } else {
-        is_i_port = 0;
-      }
-    }
     id = bv->id->toid()->Canonical(cs);
     vx = id->toid()->rootVx(cs);
-    if (is_port == 0 && is_i_port == 1) {
-      if (tsm->GetInstPortDir(id) == 0) {
-        type = 1;
+    //for (auto j = 0; j < A_LEN(bnl->instchpports); j++) {
+    //  act_connection *c = bnl->instchpports[j]->toid()->Canonical(cs);
+    //  if (bv->id == c) {
+    //    is_i_port = 1;
+    //    break;
+    //  } else {
+    //    is_i_port = 0;
+    //  }
+    //}
+    //if (is_port == 0 && is_i_port == 1) {
+    //  if (tsm->GetInstPortDir(id) == 0) {
+    //    type = 1;
+    //  } else {
+    //    type = 0;
+    //  }
+    //} else {
+    //  type = 0;
+    //}
+    //if (bv->input == 1 && bv->output == 1 && is_i_port == 1) {
+    //  type = 2;
+    //}
+    if (bv->isint == 1 && bv->ischpport == 0) { type = 0; }
+    if (bv->isint == 1 && bv->ischpport == 1) { type = 1; }
+    else if (bv->ischpport == 1) { type = 0; }
+    else if (bv->input == 1 && bv->output == 1) {
+      if (tsm->GetInstPorts()[id].size() > 1) {
+        type = 2;
+      } else if (tsm->GetInstPorts()[id].size() == 1 && tsm->GetInstPorts()[id][0]->GetDir() == 0) { 
+        type = 1; 
       } else {
         type = 0;
       }
-    } else {
-      type = 0;
     }
     chan = bv->ischan;
     port = bv->ischpport;
     dyn = 0;
-    
+
     var = new Variable(type, chan, port, dyn, vx, id);
     
     var->AddDimension(bv->width-1);
-    //if (id->toid()->arrayInfo()) {// && id->toid()->isDynamicDeref()) {
-    //  Array *var_a;
-    //  InstType *it = cs->FullLookup(id->toid(), &var_a);
-    //  var_a = it->arrayInfo();
-    //  for (auto i = 0; i < var_a->nDims(); i++) {
-    //    int dim_size = var_a->range_size(i);
-    //    var->AddDimension(dim_size-1);
-    //  }
-    //}
     tsm->AddVar(var);
   }
 

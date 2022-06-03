@@ -91,7 +91,7 @@ void StateMachine::AddCondition(Condition *c) {
     commun_num++;
     commu_condition.push_back(c);
   } else if (c->GetType() == 1 || c->GetType() == 4) {
-    guard_num++;
+    if (c->GetType() == 1) { guard_num++; }
     guard_condition.push_back(c);
   } else if (c->GetType() == 2) {
     st_num++;
@@ -103,7 +103,7 @@ void StateMachine::AddCondition(Condition *c) {
 }
 void StateMachine::AddArb(Arbiter *a) { arb.push_back(a); }
 void StateMachine::AddInstPortPair(act_connection *c, Port *p) {
-  _ports[c] = p;
+  _ports[c].push_back(p);
   return;
 }
 
@@ -120,7 +120,6 @@ StateMachine *StateMachine::GetPar() { return par; }
 StateMachine *StateMachine::GetNext() { return next; }
 Process *StateMachine::GetProc() { return p; }
 std::vector<StateMachineInst *> StateMachine::GetInst() { return inst; }
-int StateMachine::GetInstPortDir(act_connection *c) { return _ports[c]->GetDir(); }
 
 void StateMachine::SetNext(StateMachine *smn) { next = smn; }
 void StateMachine::SetProcess(Process *p_) { p = p_; }

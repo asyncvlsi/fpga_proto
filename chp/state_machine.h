@@ -210,8 +210,8 @@ public:
   std::vector<Port *> GetPorts();
   Process *GetProc();
   std::vector<StateMachineInst *> GetInst();
+  std::map<act_connection *, std::vector<Port *>> GetInstPorts() {return _ports; };
   inline int GetType() { return top->GetType(); };
-  int GetInstPortDir(act_connection *);
 
   void PrintParent(StateMachine *, int);
   void PrintScopeVar(StateMachine *, std::string &);
@@ -246,7 +246,7 @@ private:
   std::map<act_connection*, std::vector<Data *>> hs_data;
 
   std::vector<Port *> ports;
-  std::map<act_connection *, Port *> _ports;  //connection to inst ports mapping
+  std::map<act_connection *, std::vector<Port *>> _ports;  //connection to inst ports mapping
   std::vector<Variable *> vars;
   std::map<act_connection *, Variable *> vm;
 
@@ -422,7 +422,7 @@ public:
 
 private:
 
-  int type;   //0 - reg, 1 - wire
+  int type;   //0 - reg, 1 - wire, 2 - inst-inst wire
   int ischan; //0 - no, 1 - yes
   int isport; //0 - no, 1 - yes
   int isdyn;  //0 - no, 1 - yes

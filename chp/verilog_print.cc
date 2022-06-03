@@ -470,7 +470,7 @@ void Variable::PrintVerilog() {
     else { var += "wire\t\\"; }
     var = var + tmp + "_valid ;\n";
 
-    if (type == 0) { var += "wire\t\\"; } 
+    if (type == 0 || type == 2) { var += "wire\t\\"; } 
     else { var += "reg\t\\"; }
     var = var + tmp + "_ready ;\n";
   } 
@@ -805,12 +805,14 @@ void Data::PrintVerilogHS(int f, std::string &str){
       id->sPrint(tmp,1024);
     }
     str += tmp;
-    if (scope->IsPort(cid) == 1) {
+    if (scope->IsPort(cid) == 0) {
+      str += "_valid <= ";
+    } else if (scope->IsPort(cid) == 1) {
       str += "_valid <= ";
     } else if (scope->IsPort(cid) == 2) {
       str += "_ready <= ";
     } else {
-      str += "Whaaaat?!\n";
+      str += "Whaaaat?!" + std::to_string(scope->IsPort(cid)) + "\n";
     }
   }
   if (type == 1) {
