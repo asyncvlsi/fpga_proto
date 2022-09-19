@@ -1236,10 +1236,13 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
 
     hb = ihash_lookup(bnl->cH, (long)tmp_c);
     act_booleanized_var_t *bv;
-    bv = (act_booleanized_var_t *)hb->v;
-    
-    tmp_w = bv->width;
-    chan = bv->ischan;
+
+    if (hb) {    
+      bv = (act_booleanized_var_t *)hb->v;
+   
+      tmp_w = bv->width;
+      chan = bv->ischan;
+    }
 
     for (auto in : sm->GetInst()){
       for (auto pp : in->GetPorts()) {
@@ -1299,9 +1302,9 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   ActUniqProcInstiter i(cs);
   
   StateMachineInst *smi;
-  
+
   int iport = 0;
-  
+
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
     if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
@@ -1335,7 +1338,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
               hb = ihash_lookup(bnl->cH, (long)c);
               act_booleanized_var_t *bv;
               bv = (act_booleanized_var_t *)hb->v;
-              if (bv->used == 0) { continue; } 
+              if (bv->used == 0 && bv->usedchp == 0) { continue; } 
 
               int dir = sub->chpports[j].input;
               int width = bv->width;
@@ -1365,6 +1368,7 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
           hb = ihash_lookup(bnl->cH, (long)c);
           act_booleanized_var_t *bv;
           bv = (act_booleanized_var_t *)hb->v;
+          if (bv->used == 0 && bv->usedchp == 0) { continue; } 
           
           int dir = sub->chpports[j].input;
           int width = bv->width;

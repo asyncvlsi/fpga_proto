@@ -1,4 +1,5 @@
 #include <vector>
+#include <string>
 #include <string.h>
 #include <act/act.h>
 
