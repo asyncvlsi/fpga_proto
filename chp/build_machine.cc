@@ -1257,7 +1257,7 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     sm->AddPort(p);
   }
   for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
-    tmp_id = bnl->used_globals[i]->toid();
+    tmp_id = bnl->used_globals[i].c->toid();
     tmp_v = tmp_id->rootVx(cs);
     tmp_c = tmp_id->Canonical(cs);
     tmp_d = 1;

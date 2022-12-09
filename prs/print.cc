@@ -1,6 +1,7 @@
 #include <act/graph.h>
 #include <vector>
 #include <map>
+#include <string>
 #include <string.h>
 
 namespace fpga {
@@ -23,7 +24,7 @@ void print_bi_dir (port *p, std::string &st)
 
 void print_ff (int func, std::string &ff) 
 {
-  ff += "`timescale 1ns/1ps\n\n";
+  ff = ff + "`timescale 1ns/1ps\n\n";
   ff += "module \\ff_delay #(\n";
   ff += "\tparameter\tDELAY\t=\t1\n";
   ff += ")(\n";
