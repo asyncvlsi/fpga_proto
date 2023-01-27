@@ -116,7 +116,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_INT): {
-      str = str + "32'd" + std::to_string(e->u.v);
+      str = str + "32'd" + std::to_string(e->u.ival.v);
       break;
     }
     case (E_VAR): {
@@ -235,9 +235,9 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
     case (E_BITFIELD): {
       unsigned int l;
       unsigned int r;
-      l = e->u.e.r->u.e.r->u.v;
+      l = e->u.e.r->u.e.r->u.ival.v;
       if (e->u.e.r->u.e.l) {
-        r = e->u.e.r->u.e.l->u.v;
+        r = e->u.e.r->u.e.l->u.ival.v;
       } else {
         r = l;
       }
@@ -254,7 +254,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_REAL): {
-      str += std::to_string(e->u.v);
+      str += std::to_string(e->u.ival.v);
       break;
     }
     case (E_ANDLOOP): {
