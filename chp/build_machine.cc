@@ -503,7 +503,7 @@ Condition *process_loop (
     }
 
     if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI || inf_flag == 1) {
-//      sm->AddCondition(tmp);
+      sm->AddCondition(tmp);
     } else {
       if (tmp) {
         sm->AddKid(csm);
