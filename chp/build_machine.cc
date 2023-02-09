@@ -210,7 +210,6 @@ Condition *process_recv (
     for (auto pp : tsm->GetPorts()) {
       pp->GetCon()->toid()->sPrint(tmp2, 1024);
       if (strcmp(tmp1, tmp2) == 0) {
-//        pp->SetCtrlChan();
         found = 1;
         break;
       }
@@ -226,6 +225,8 @@ Condition *process_recv (
   if (pc) {
     Condition *npar_cond = new_single_cond_comma (2,pc,sm);
     exit_s->AddNextStateRaw(s, npar_cond);
+  } else if (par_chp == ACT_CHP_INF_LOOP) {
+    exit_s->AddNextStateRaw(s, exit_s_cond);
   }
 
   //Terminate condition is when recv machine is in
@@ -318,6 +319,8 @@ Condition *process_send (
   if (pc) {
     Condition *npar_cond = new_single_cond_comma(2, pc, sm);
     exit_s->AddNextStateRaw(s, npar_cond);
+  } else if (par_chp == ACT_CHP_INF_LOOP) {
+    exit_s->AddNextStateRaw(s, exit_s_cond);
   }
 
   //Terminate condition is when send machine is in
@@ -432,131 +435,142 @@ Condition *process_loop (
 
   int inf_flag = 0;
 
-  //Create initial state and corresponding state condition
-  State *s = new_state(ACT_CHP_LOOP, sm);
-  Condition *zero_s_cond = new_state_cond(s, sm);
+  if (!chp_lang->u.gc->g) { inf_flag = 1; }
 
-  Condition *child_cond = NULL;
-  //Traverse all branches
-  for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-
-    Condition *g = NULL;
-    State *ss = NULL;
-
-    //If loop is infinite there is no guard and guard
-    //condition is replaced with the zero state condition
-    if (gg->g) {
-      if (gg->s->type != ACT_CHP_SKIP && 
-          gg->s->type != ACT_CHP_FUNC) {
-        g = new_guard_cond(gg->g, sm);
+  if (inf_flag = 0) {
+    //Create initial state and corresponding state condition
+    State *s = new_state(ACT_CHP_LOOP, sm);
+    Condition *zero_s_cond = new_state_cond(s, sm);
+  
+    Condition *child_cond = NULL;
+    //Traverse all branches
+    for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
+  
+      Condition *g = NULL;
+      State *ss = NULL;
+  
+      //If loop is infinite there is no guard and guard
+      //condition is replaced with the zero state condition
+      if (gg->g) {
+        if (gg->s->type != ACT_CHP_SKIP && 
+            gg->s->type != ACT_CHP_FUNC) {
+          g = new_guard_cond(gg->g, sm);
+        } else {
+          continue;
+        }
       } else {
-        continue;
+        inf_flag = 1;
+        g = zero_s_cond;
       }
-    } else {
-      inf_flag = 1;
-      g = zero_s_cond;
+      vt.push_back(g);
+  
+      ss = new_state(gg->s->type, sm);
+      tmp = new_state_cond(ss,sm);
+  
+      //If loop is not infinite use guard as a part of the
+      ///switching condition
+      //If there is no parent condition then using zero state
+      //and corresponding guard is enough
+      vc.push_back(zero_s_cond);
+      if (g != zero_s_cond) { vc.push_back(g); }
+      if (pc) { vc.push_back(pc); }
+      Condition *par_cond = new_comma_cond_raw(0, vc, sm);
+      s->AddNextStateRaw(ss, par_cond);
+      vc.clear();
+  
+      //Create child condition
+      if (pc) {
+        int type = 0;
+        if (opt >= 2 & inf_flag == 0) {
+          type = 1;
+          tmp = new_two_cond_comma(0,tmp,pc,sm);
+          vc.push_back(par_cond);
+        } else if (opt >= 1) {
+          vc.push_back(pc);
+        } 
+        vc.push_back(tmp);
+        child_cond = new_comma_cond_raw(type,vc,sm);
+      } else {
+        child_cond = tmp;
+      }
+      vc.clear();
+  
+      //Traverse lower levels of CHP hierarchy
+      StateMachine *csm;
+      if (gg->s->type != ACT_CHP_COMMA && gg->s->type != ACT_CHP_SEMI && inf_flag == 0) {
+        csm = init_state_machine(sm);
+      } else {
+        csm = sm;
+      }
+      if (inf_flag == 0) {
+        tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_LOOP, opt);
+      } else {
+        tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_INF_LOOP, opt);
+      }
+  
+      if (gg->s->type == ACT_CHP_COMMA || 
+          gg->s->type == ACT_CHP_SEMI || 
+          inf_flag == 1) {
+        sm->AddCondition(tmp);
+      } else {
+        if (tmp) {
+          sm->AddKid(csm);
+        } else {
+          csm = NULL;
+          delete csm;
+        }
+      }
+  
+      //Create iteration condition which is a termination
+      //condition of the branch statement
+      if (inf_flag == 0 && tmp) {
+          Condition *loop_c = new_single_cond_comma(0, tmp, sm);
+          ss->AddNextStateRaw(s,loop_c);
+      }
     }
-    vt.push_back(g);
-
-    ss = new_state(gg->s->type, sm);
-    tmp = new_state_cond(ss,sm);
-
-    //If loop is not infinite use guard as a part of the
-    ///switching condition
-    //If there is no parent condition then using zero state
-    //and corresponding guard is enough
+    vc.clear();
+  
+    //create condition for all negative guards
+    Condition *nguard_cond = new_comma_cond_raw(2, vt, sm);
+  
+    //create general loop termination condition
+    //when loop is in the zero state and all guards
+    //are false
     vc.push_back(zero_s_cond);
-    if (g != zero_s_cond) { vc.push_back(g); }
+    vc.push_back(nguard_cond);
     if (pc) { vc.push_back(pc); }
-    Condition *par_cond = new_comma_cond_raw(0, vc, sm);
-    s->AddNextStateRaw(ss, par_cond);
-    vc.clear();
-
-    //Create child condition
-    if (pc) {
-      int type = 0;
-      if (opt >= 2 & inf_flag == 0) {
-        type = 1;
-        tmp = new_two_cond_comma(0,tmp,pc,sm);
-        vc.push_back(par_cond);
-      } else if (opt >= 1) {
-        vc.push_back(pc);
-      } 
-      vc.push_back(tmp);
-      child_cond = new_comma_cond_raw(type,vc,sm);
-    } else {
-      child_cond = tmp;
-    }
-    vc.clear();
-
-    //Traverse lower levels of CHP hierarchy
-    StateMachine *csm;
-    if (gg->s->type != ACT_CHP_COMMA && gg->s->type != ACT_CHP_SEMI && inf_flag == 0) {
-      csm = init_state_machine(sm);
-    } else {
-      csm = sm;
-    }
-    if (inf_flag == 0) {
-      tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_LOOP, opt);
-    } else {
-      tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_INF_LOOP, opt);
-    }
-
-    if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI || inf_flag == 1) {
-      sm->AddCondition(tmp);
-    } else {
-      if (tmp) {
-        sm->AddKid(csm);
+    Condition *exit_cond = new_comma_cond_raw(0, vc, sm);
+  
+    //Create exit state
+    State *exit_s = new_state(ACT_CHP_SKIP, sm);
+    Condition *exit_s_cond = new_state_cond(exit_s, sm);
+    s->AddNextStateRaw(exit_s, exit_cond);
+  
+    //Create condition to return to the zero state
+    //If parent condition exists then its negation is the condition
+    //If loop is infinite then exit condition is the condition, 
+    //however it is created just for the consistency of the model
+    //and never actually used.
+    if (pc || inf_flag == 1) {
+      Condition *npar_cond;
+      if (pc) {
+        npar_cond = new_single_cond_comma(2, pc, sm);
       } else {
-        csm = NULL;
-        delete csm;
+        npar_cond = new_single_cond_comma(0, exit_cond, sm);
       }
+      exit_s->AddNextStateRaw(s,npar_cond);
     }
-
-    //Create iteration condition which is a termination
-    //condition of the branch statement
-    if (inf_flag == 0 && tmp) {
-        Condition *loop_c = new_single_cond_comma(0, tmp, sm);
-        ss->AddNextStateRaw(s,loop_c);
-    }
+  
+    //Use exit state as a termination condition
+    Condition *term_cond = new_single_cond_comma(1,exit_s_cond,sm);
+  
+    return term_cond;
+  } else {
+  
+    traverse_chp(proc, chp_lang->u.gc->s, sm, tsm, NULL, ACT_CHP_INF_LOOP, opt);
+  
+    return NULL;
   }
-  vc.clear();
-
-  //create condition for all negative guards
-  Condition *nguard_cond = new_comma_cond_raw(2, vt, sm);
-
-  //create general loop termination condition
-  //when loop is in the zero state and all guards
-  //are false
-  vc.push_back(zero_s_cond);
-  vc.push_back(nguard_cond);
-  if (pc) { vc.push_back(pc); }
-  Condition *exit_cond = new_comma_cond_raw(0, vc, sm);
-
-  //Create exit state
-  State *exit_s = new_state(ACT_CHP_SKIP, sm);
-  Condition *exit_s_cond = new_state_cond(exit_s, sm);
-  s->AddNextStateRaw(exit_s, exit_cond);
-
-  //Create condition to return to the zero state
-  //If parent condition exists then its negation is the condition
-  //If loop is infinite then exit condition is the condition, 
-  //however it is created just for the consistency of the model
-  //and never actually used.
-  if (pc || inf_flag == 1) {
-    Condition *npar_cond;
-    if (pc) {
-      npar_cond = new_single_cond_comma(2, pc, sm);
-    } else {
-      npar_cond = new_single_cond_comma(0, exit_cond, sm);
-    }
-    exit_s->AddNextStateRaw(s,npar_cond);
-  }
-
-  //Use exit state as a termination condition
-  Condition *term_cond = new_single_cond_comma(1,exit_s_cond,sm);
-
-  return term_cond;
 
 }
 
@@ -1108,7 +1122,6 @@ Condition *process_comma (
 
     //if statement is COMMA then no new sm
     //is needed otherwise create new child sm
-    //TODO: check if a comma inside a comma is possible :)
     if (cl->type == ACT_CHP_COMMA || cl->type == ACT_CHP_SEMI) {
       tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_COMMA, opt);
 //      sm->AddCondition(tmp); //TODO: check this. Not sure yet
