@@ -220,6 +220,10 @@ Condition *process_recv (
   if (var_id) { tsm->AddData(var_con, d); }
   tsm->AddHS(chan_con, d);
 
+std::string tmp100;
+exit_cond->PrintVerilogExpr(tmp100);printf("-->%s\n", tmp100.c_str());tmp100="";
+init_cond->PrintVerilogExpr(tmp100);printf("-->%s\n", tmp100.c_str());tmp100="";
+
   //Create return condition when parent
   //machine switches from the current state
   if (pc) {
@@ -400,7 +404,7 @@ Condition *process_assign (
   //condition or as a more optimized version return back
   //right after switching to exit state
   if (pc) {
-    if (par_chp == ACT_CHP_LOOP | par_chp == ACT_CHP_INF_LOOP |
+    if (par_chp == ACT_CHP_LOOP |
         par_chp == ACT_CHP_SELECT | par_chp == ACT_CHP_SELECT_NONDET
         & opt == 2) {
       exit_s->AddNextStateRaw(s, term_cond);
@@ -408,6 +412,8 @@ Condition *process_assign (
       Condition *npar_cond = new_single_cond_comma(2,pc,sm);
       exit_s->AddNextStateRaw(s, npar_cond);
     }
+  } else if (par_chp == ACT_CHP_INF_LOOP) {
+    exit_s->AddNextStateRaw(s, term_cond);
   }
 
   return term_cond;
@@ -1120,11 +1126,11 @@ Condition *process_comma (
       continue;
     }
 
-    //if statement is COMMA then no new sm
+    //if statement is SEMI then no new sm
     //is needed otherwise create new child sm
-    if (cl->type == ACT_CHP_COMMA || cl->type == ACT_CHP_SEMI) {
+    if (cl->type == ACT_CHP_SEMI) {
       tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_COMMA, opt);
-//      sm->AddCondition(tmp); //TODO: check this. Not sure yet
+//      sm->AddCondition(tmp);
     } else {
       if (sm->IsEmpty()) {
         tmp = traverse_chp(proc, cl, sm, sm , child_cond, ACT_CHP_COMMA, opt);
@@ -1132,6 +1138,8 @@ Condition *process_comma (
         StateMachine *csm = init_state_machine(sm);
         tmp = traverse_chp(proc, cl, csm, tsm , child_cond, ACT_CHP_COMMA, opt);
         if (tmp) {
+          sm->AddKid(csm);
+        } else if (cl->type == ACT_CHP_LOOP & !tmp) {
           sm->AddKid(csm);
         } else {
           csm = NULL;
