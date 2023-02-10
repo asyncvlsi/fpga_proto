@@ -1035,6 +1035,10 @@ Condition *process_semi (
           tmp = traverse_chp(proc, cl, csm, tsm, child_cond, ACT_CHP_SEMI, opt);
           if (tmp) {
             sm->AddKid(csm);
+          } else if (cl->type == ACT_CHP_LOOP) {
+            csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
+            csm->SetParent(sm);
+            sm->AddSib(csm);
           } else {
             csm = NULL;
             delete csm;
@@ -1123,7 +1127,7 @@ Condition *process_comma (
         tmp = traverse_chp(proc, cl, csm, tsm , child_cond, ACT_CHP_COMMA, opt);
         if (tmp) {
           sm->AddKid(csm);
-        } else if (cl->type == ACT_CHP_LOOP) {
+        } else if (cl->type == ACT_CHP_LOOP) { //Loop return NULL only in the INF case
           csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
           csm->SetParent(sm);
           sm->AddSib(csm);
