@@ -189,6 +189,7 @@ public:
   void AddCondition(Condition *c);
   void AddSize();
   void AddKid(StateMachine *sm);
+  void AddSib(StateMachine *sm);
   void AddData(act_connection*, Data *);
   void AddHS  (act_connection*, Data *);
   void AddPort(Port *);
@@ -204,6 +205,7 @@ public:
   int GetCN();
   int GetCCN();
   int GetKids();
+  int GetSibs();
   StateMachine *GetPar();
   StateMachine *GetNext();
   std::vector<Variable *> GetVars();
@@ -263,7 +265,8 @@ private:
   void PrintVerilogParameters();
   void PrintSystemVerilogParameters(int);
 
-  std::vector<StateMachine *> csm;
+  std::vector<StateMachine *> csm; //children
+  std::vector<StateMachine *> ssm; //siblings
 
   StateMachine *next;
   StateMachine *par;

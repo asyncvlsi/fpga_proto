@@ -220,10 +220,6 @@ Condition *process_recv (
   if (var_id) { tsm->AddData(var_con, d); }
   tsm->AddHS(chan_con, d);
 
-std::string tmp100;
-exit_cond->PrintVerilogExpr(tmp100);printf("-->%s\n", tmp100.c_str());tmp100="";
-init_cond->PrintVerilogExpr(tmp100);printf("-->%s\n", tmp100.c_str());tmp100="";
-
   //Create return condition when parent
   //machine switches from the current state
   if (pc) {
@@ -1076,6 +1072,9 @@ Condition *process_semi (
   if ((opt >= 2 & par_chp == ACT_CHP_LOOP) | par_chp == ACT_CHP_INF_LOOP) {
     tmp_com->c.push_back(term_cond);
   }
+  if (!pc & par_chp == ACT_CHP_INF_LOOP) {
+    sm->AddCondition(term_cond);
+  }
 
   return term_cond;
 
@@ -1130,7 +1129,6 @@ Condition *process_comma (
     //is needed otherwise create new child sm
     if (cl->type == ACT_CHP_SEMI) {
       tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_COMMA, opt);
-//      sm->AddCondition(tmp);
     } else {
       if (sm->IsEmpty()) {
         tmp = traverse_chp(proc, cl, sm, sm , child_cond, ACT_CHP_COMMA, opt);
@@ -1139,8 +1137,10 @@ Condition *process_comma (
         tmp = traverse_chp(proc, cl, csm, tsm , child_cond, ACT_CHP_COMMA, opt);
         if (tmp) {
           sm->AddKid(csm);
-        } else if (cl->type == ACT_CHP_LOOP & !tmp) {
-          sm->AddKid(csm);
+        } else if (cl->type == ACT_CHP_LOOP) {
+          csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
+          csm->SetParent(NULL);
+          sm->AddSib(csm);
         } else {
           csm = NULL;
           delete csm;

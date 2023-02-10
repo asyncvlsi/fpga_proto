@@ -626,8 +626,17 @@ void StateMachine::PrintVerilogHeader(int sv) {
   header.clear();
 
   PrintVerilogWires();
+  for (auto s : ssm) {
+    s->PrintVerilogWires();
+  }
   PrintVerilogVars();
+  for (auto s : ssm) {
+    s->PrintVerilogVars();
+  }
   PrintVerilogParameters();
+  for (auto s : ssm) {
+    s->PrintVerilogParameters();
+  }
 
   return;
 }
@@ -929,6 +938,10 @@ void StateMachine::PrintVerilog() {
     c->PrintVerilog();
   }
 
+  for (auto sib : ssm) {
+    sib->PrintVerilog();
+  }
+
   std::string err;
   if (!top) {
     err += "/*\tNO CHP BODY IN THE PROCESS\t*/\n";
@@ -944,9 +957,7 @@ void StateMachine::PrintVerilog() {
   fprintf(output_file, "%s\n", cond.c_str());
   cond.clear();
 
-  for (int ii = 0; ii < arb.size(); ii++) {
-    arb[ii]->PrintInst(ii);
-  }
+  for (int ii = 0; ii < arb.size(); ii++) { arb[ii]->PrintInst(ii); }
 
   if (top) { PrintVerilogBody(); } 
 
@@ -960,7 +971,7 @@ void StateMachine::PrintVerilog() {
  
   for (auto i : inst) { i->PrintVerilog(); }
  
-  if (!par) {
+  if (!par & number == 0) {
     fprintf(output_file, "\n\nendmodule\n\n");
   }
 

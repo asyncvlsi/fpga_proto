@@ -79,6 +79,7 @@ void StateMachine::AddInst (StateMachineInst *inst_) {
 }
 void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
+void StateMachine::AddSib(StateMachine *sm) { ssm.push_back(sm); }
 void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
 void StateMachine::AddVar(Variable *v_){ 
   vars.push_back(v_); 
@@ -110,6 +111,7 @@ void StateMachine::AddInstPortPair(act_connection *c, Port *p) {
 int StateMachine::GetNum(){ return number; }
 int StateMachine::GetSize() { return size; }
 int StateMachine::GetKids() { return csm.size(); }
+int StateMachine::GetSibs() { return ssm.size(); }
 int StateMachine::GetGN() { return guard_num; }
 int StateMachine::GetSN() { return st_num; }
 int StateMachine::GetCN() { return commun_num; }
