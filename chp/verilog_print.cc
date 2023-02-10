@@ -794,6 +794,8 @@ void StateMachine::PrintVerilogData()
   return;
 }
 
+
+
 void Data::PrintVerilogHS(int f, std::string &str){
 
   if (f == 0) {
@@ -852,6 +854,7 @@ void StateMachine::PrintVerilogDataHS()
         if (dd != id.second[id.second.size()-1]) { hs += " | "; }
       }
     }
+    hs += " & ~reset ";
     hs += ";\n\n";
     fprintf(output_file, "%s", hs.c_str());
     hs.clear();
