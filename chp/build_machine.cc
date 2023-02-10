@@ -201,20 +201,6 @@ Condition *process_recv (
     }
   }
 
-  if (!var_id) {
-    var_id = NULL;
-    int found = 0;
-    char tmp1[1024];
-    char tmp2[1024];
-    chan_id->sPrint(tmp1, 1024);
-    for (auto pp : tsm->GetPorts()) {
-      pp->GetCon()->toid()->sPrint(tmp2, 1024);
-      if (strcmp(tmp1, tmp2) == 0) {
-        found = 1;
-        break;
-      }
-    }
-  }
   d = new Data(1, 0, 0, proc, tsm, exit_cond,
                                 init_cond, var_id, chan_id);
   if (var_id) { tsm->AddData(var_con, d); }
@@ -1139,7 +1125,7 @@ Condition *process_comma (
           sm->AddKid(csm);
         } else if (cl->type == ACT_CHP_LOOP) {
           csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
-          csm->SetParent(NULL);
+          csm->SetParent(sm);
           sm->AddSib(csm);
         } else {
           csm = NULL;
@@ -1297,6 +1283,8 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
     sm->AddPort(p);
   }
+
+  return;
 }
 
 //Map machine instances to their origins

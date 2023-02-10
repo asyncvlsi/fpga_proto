@@ -847,7 +847,7 @@ void StateMachine::PrintVerilogDataHS()
           dd->PrintVerilogHS(first, hs);
           first = 1;
         } else {
-          dd ->PrintVerilogHS(first, hs);
+          dd->PrintVerilogHS(first, hs);
         }
         if (dd != id.second[id.second.size()-1]) { hs += " | "; }
       }

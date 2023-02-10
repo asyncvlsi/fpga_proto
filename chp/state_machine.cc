@@ -51,7 +51,15 @@ bool StateMachine::IsEmpty() {
 
 int StateMachine::IsPort(act_connection *c_) {
   int port_type = 0;
-  for (auto p : ports) {
+
+  std::vector<Port *> tmp;
+
+  if (number != 0) {
+    tmp = par->ports;
+  } else {
+    tmp = ports;
+  }
+  for (auto p : tmp) { //TODO: Ports in the SM need to have parent in case of simblings
     if (p->GetCon() == c_) {
       if (p->GetDir() == 0) {
         return 1;
