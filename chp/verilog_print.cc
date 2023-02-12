@@ -794,38 +794,40 @@ void StateMachine::PrintVerilogData()
   return;
 }
 
+void Data::PrintVerilogHSlhs(std::string &str) {
 
-
-void Data::PrintVerilogHS(int f, std::string &str){
-
-  if (f == 0) {
-    Scope *s = act_scope->CurScope();
-    act_connection *cid;
-    
-    char tmp[1024];
-    
-    if (type == 1) {
-      cid = u.recv.chan->Canonical(s);
-    } else if (type == 2) {
-      cid = id->Canonical(s);
-    }
-    
-    if (type == 1) {
-      u.recv.chan->sPrint(tmp,1024);
-    } else if (type == 2) {
-      id->sPrint(tmp,1024);
-    }
-    str += tmp;
-    if (scope->IsPort(cid) == 0) {
-      str += "_valid <= ";
-    } else if (scope->IsPort(cid) == 1) {
-      str += "_valid <= ";
-    } else if (scope->IsPort(cid) == 2) {
-      str += "_ready <= ";
-    } else {
-      str += "Whaaaat?!" + std::to_string(scope->IsPort(cid)) + "\n";
-    }
+  Scope *s = act_scope->CurScope();
+  act_connection *cid;
+  
+  char tmp[1024];
+  
+  if (type == 1) {
+    cid = u.recv.chan->Canonical(s);
+  } else if (type == 2) {
+    cid = id->Canonical(s);
   }
+  
+  if (type == 1) {
+    u.recv.chan->sPrint(tmp,1024);
+  } else if (type == 2) {
+    id->sPrint(tmp,1024);
+  }
+  str += tmp;
+  if (scope->IsPort(cid) == 0) {
+    str += "_valid ";
+  } else if (scope->IsPort(cid) == 1) {
+    str += "_valid ";
+  } else if (scope->IsPort(cid) == 2) {
+    str += "_ready ";
+  } else {
+    str += "Whaaaat?!" + std::to_string(scope->IsPort(cid)) + "\n";
+  }
+
+  return;
+}
+
+void Data::PrintVerilogHSrhs(std::string &str){
+
   if (type == 1) {
     u.recv.up_cond->PrintVerilogDeclRaw(str);
   } else if (type == 2) {
@@ -843,22 +845,19 @@ void StateMachine::PrintVerilogDataHS()
   for (auto id : hs_data) {
     hs += "always @(*)\n\t\\";
     first = 0;
+    id.second[0]->PrintVerilogHSlhs(hs);
+    hs += " <= (";
     for (auto dd : id.second) {
       if (dd->GetType() == 1 || dd->GetType() == 2) {
-        if (first == 0) {
-          dd->PrintVerilogHS(first, hs);
-          first = 1;
-        } else {
-          dd->PrintVerilogHS(first, hs);
-        }
+        dd->PrintVerilogHSrhs(hs);
         if (dd != id.second[id.second.size()-1]) { hs += " | "; }
       }
     }
-    hs += " & ~reset ";
+    hs += " ) & ~reset ";
     hs += ";\n\n";
     fprintf(output_file, "%s", hs.c_str());
     hs.clear();
-  } 
+  }
 
   return;
 }

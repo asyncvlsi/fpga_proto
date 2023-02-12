@@ -316,7 +316,8 @@ public:
 
   void PrintPlain();
   void PrintVerilog(int, std::string&);
-  void PrintVerilogHS(int, std::string&);
+  void PrintVerilogHSlhs(std::string&);
+  void PrintVerilogHSrhs(std::string&);
   void PrintVerilogAssignment(std::string &);
 
 private:
