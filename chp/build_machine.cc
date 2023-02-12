@@ -188,7 +188,6 @@ Condition *process_recv (
   Data *d = NULL;
   act_connection *chan_con;
   chan_con = chan_id->Canonical(scope);
-  ValueIdx *chan_vx = chan_id->rootVx(scope);
 
   ActId *var_id = chp_lang->u.comm.var;
 
@@ -212,12 +211,19 @@ Condition *process_recv (
     Condition *npar_cond = new_single_cond_comma (2,pc,sm);
     exit_s->AddNextStateRaw(s, npar_cond);
   } else if (par_chp == ACT_CHP_INF_LOOP) {
+    //Special case *[ X?x ] where RECV machine is
+    //controled by itself
     exit_s->AddNextStateRaw(s, exit_s_cond);
   }
 
   //Terminate condition is when recv machine is in
   //the exit state
-  Condition *term_cond = new_single_cond_comma(1,exit_s_cond,sm);
+  Condition *term_cond;
+  if (opt >= 2) {
+    term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
+  } else {
+    term_cond = new_single_cond_comma(1, exit_s_cond, sm);
+  }
 
   return term_cond;
 
@@ -283,18 +289,7 @@ Condition *process_send (
   chan_con = chan_id->Canonical(scope);
 
   Expr *se = chp_lang->u.comm.e;
-  if (!se) {
-    Expr *dex = NULL;
-    char tmp1[1024];
-    char tmp2[1024];
-    chan_id->sPrint(tmp1, 1024);
-    for (auto pp : tsm->GetPorts()) {
-      pp->GetCon()->toid()->sPrint(tmp2, 1024);
-      if (strcmp(tmp1, tmp2) == 0) {
-//        pp->SetCtrlChan();
-      }
-    }
-  }
+
   d = new Data (2, 0, 0, proc, tsm, exit_cond, 
                                 init_cond, chan_id, se);
   if (se) { tsm->AddData(chan_con, d); }
