@@ -105,7 +105,7 @@ Condition *new_comma_cond_raw(int type, std::vector<Condition *> &vc, StateMachi
 }
 
 //Function to create new single element comma condtion
-Condition *new_single_cond_comma (int type, Condition *cond, StateMachine *sm)
+Condition *new_one_cond_comma (int type, Condition *cond, StateMachine *sm)
 {
   Comma *com = new Comma();
   com->type = type;
@@ -121,12 +121,8 @@ Condition *new_two_cond_comma (int type, Condition *cond1, Condition *cond2, Sta
   Condition *c;
   Comma *com = new Comma();
   com->type = type;
-  if (cond1) {
-    com->c.push_back(cond1);
-  }
-  if (cond2) {
-    com->c.push_back(cond2);
-  }
+  if (cond1) { com->c.push_back(cond1); }
+  if (cond2) { com->c.push_back(cond2); }
   c = new_comma_cond(com, sm);
   
   return c;
@@ -173,7 +169,7 @@ Condition *process_recv (
   //Create initial switching condition when
   //both parent and child are in the right state
   //and communication complete
-  Condition *exit_cond = new_single_cond_comma(0,commu_compl,sm);
+  Condition *exit_cond = new_one_cond_comma(0,commu_compl,sm);
 
   //Create second state aka exit state to wait
   //until parent switches its state
@@ -208,7 +204,7 @@ Condition *process_recv (
   //Create return condition when parent
   //machine switches from the current state
   if (pc) {
-    Condition *npar_cond = new_single_cond_comma (2,pc,sm);
+    Condition *npar_cond = new_one_cond_comma (2,pc,sm);
     exit_s->AddNextStateRaw(s, npar_cond);
   } else if (par_chp == ACT_CHP_INF_LOOP) {
     //Special case *[ X?x ] where RECV machine is
@@ -222,7 +218,7 @@ Condition *process_recv (
   if (opt >= 2) {
     term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
   } else {
-    term_cond = new_single_cond_comma(1, exit_s_cond, sm);
+    term_cond = new_one_cond_comma(1, exit_s_cond, sm);
   }
 
   return term_cond;
@@ -270,7 +266,7 @@ Condition *process_send (
   //Create exit switching condition when
   //both parent and child are in the right state
   //and communication complete
-  Condition *exit_cond = new_single_cond_comma(0,commu_compl, sm);
+  Condition *exit_cond = new_one_cond_comma(0,commu_compl, sm);
 
   //Create second state aka exit state to wait
   //until parent switches its state
@@ -298,7 +294,7 @@ Condition *process_send (
   //Create return condition when parent
   //machine switches from the current state
   if (pc) {
-    Condition *npar_cond = new_single_cond_comma(2, pc, sm);
+    Condition *npar_cond = new_one_cond_comma(2, pc, sm);
     exit_s->AddNextStateRaw(s, npar_cond);
   } else if (par_chp == ACT_CHP_INF_LOOP) {
     exit_s->AddNextStateRaw(s, exit_s_cond);
@@ -310,7 +306,7 @@ Condition *process_send (
   if (opt >= 2) {
     term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
   } else {
-    term_cond = new_single_cond_comma(1, exit_s_cond, sm);
+    term_cond = new_one_cond_comma(1, exit_s_cond, sm);
   }
 
   return term_cond;
@@ -362,7 +358,6 @@ Condition *process_assign (
   Data *d = NULL;
   ActId *var_id = chp_lang->u.assign.id;
   Expr *e = chp_lang->u.assign.e;
-  ValueIdx *var_vx = var_id->rootVx(scope);
 
   act_connection *var_con = NULL;
   if (BOOL->isDynamicRef(bnl, var_id)) {
@@ -375,7 +370,17 @@ Condition *process_assign (
   tsm->AddData(var_con, d);
 
   //Create termination condition using an exit state condition
-  Condition *term_cond = new_single_cond_comma (1, exit_s_cond, sm);
+  Condition *term_cond;
+  term_cond = new_one_cond_comma (1, exit_s_cond, sm);
+  //TODO: This creates combinational loop. Need to find a better way.
+  //if (opt >= 2) {
+  //  //PC & (S0 | S1)
+  //  Condition *tmp;
+  //  tmp = new_two_cond_comma (1, zero_s_cond, exit_s_cond, sm);
+  //  term_cond = new_two_cond_comma (0, tmp, pc, sm);
+  //} else {
+  //  term_cond = new_one_cond_comma (1, exit_s_cond, sm);
+  //}
 
   //Create a return condition as a negation of the parent
   //condition or as a more optimized version return back
@@ -386,7 +391,7 @@ Condition *process_assign (
         & opt == 2) {
       exit_s->AddNextStateRaw(s, term_cond);
     } else {
-      Condition *npar_cond = new_single_cond_comma(2,pc,sm);
+      Condition *npar_cond = new_one_cond_comma(2,pc,sm);
       exit_s->AddNextStateRaw(s, npar_cond);
     }
   } else if (par_chp == ACT_CHP_INF_LOOP) {
@@ -417,10 +422,9 @@ Condition *process_loop (
   std::vector<Condition *> vt;
 
   int inf_flag = 0;
-
   if (!chp_lang->u.gc->g) { inf_flag = 1; }
 
-  if (inf_flag = 0) {
+  if (inf_flag == 0) {
     //Create initial state and corresponding state condition
     State *s = new_state(ACT_CHP_LOOP, sm);
     Condition *zero_s_cond = new_state_cond(s, sm);
@@ -507,7 +511,7 @@ Condition *process_loop (
       //Create iteration condition which is a termination
       //condition of the branch statement
       if (inf_flag == 0 && tmp) {
-          Condition *loop_c = new_single_cond_comma(0, tmp, sm);
+          Condition *loop_c = new_one_cond_comma(0, tmp, sm);
           ss->AddNextStateRaw(s,loop_c);
       }
     }
@@ -537,20 +541,19 @@ Condition *process_loop (
     if (pc || inf_flag == 1) {
       Condition *npar_cond;
       if (pc) {
-        npar_cond = new_single_cond_comma(2, pc, sm);
+        npar_cond = new_one_cond_comma(2, pc, sm);
       } else {
-        npar_cond = new_single_cond_comma(0, exit_cond, sm);
+        npar_cond = new_one_cond_comma(0, exit_cond, sm);
       }
       exit_s->AddNextStateRaw(s,npar_cond);
     }
   
     //Use exit state as a termination condition
-    Condition *term_cond = new_single_cond_comma(1,exit_s_cond,sm);
+    Condition *term_cond = new_one_cond_comma(1,exit_s_cond,sm);
   
     return term_cond;
   } else {
-  
-    traverse_chp(proc, chp_lang->u.gc->s, sm, tsm, NULL, ACT_CHP_INF_LOOP, opt);
+    traverse_chp(proc, chp_lang->u.gc->s, sm, tsm, pc, ACT_CHP_INF_LOOP, opt);
   
     return NULL;
   }
@@ -698,12 +701,12 @@ Condition *process_select_nondet (
     //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
 
     //Create termination condition which is an exit state
-    Condition *term_cond = new_single_cond_comma(1, exit_s_cond, sm);
+    Condition *term_cond = new_one_cond_comma(1, exit_s_cond, sm);
 
     //Return to the initial state when parent is not in 
     //the right state
     if (pc) {
-      Condition *npar_cond = new_single_cond_comma(2, pc, sm);
+      Condition *npar_cond = new_one_cond_comma(2, pc, sm);
       exit_s->AddNextStateRaw(s, npar_cond);
     }
 
@@ -901,12 +904,12 @@ Condition *process_select (
     //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
 
     //Create termination condition which is an exit state
-    Condition *term_cond = new_single_cond_comma(1, exit_s_cond, sm);
+    Condition *term_cond = new_one_cond_comma(1, exit_s_cond, sm);
 
     //Return to the initial state when parent is not in 
     //the right state
     if (pc) {
-      Condition *npar_cond = new_single_cond_comma(2, pc, sm);
+      Condition *npar_cond = new_one_cond_comma(2, pc, sm);
       exit_s->AddNextStateRaw(s, npar_cond);
     }
 
@@ -1005,6 +1008,7 @@ Condition *process_semi (
         }
       }
 
+
       //If next statement is semi then do nothing
       if (cl->type == ACT_CHP_SEMI) {
         tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_SEMI, opt);
@@ -1031,9 +1035,10 @@ Condition *process_semi (
           if (tmp) {
             sm->AddKid(csm);
           } else if (cl->type == ACT_CHP_LOOP) {
-            csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
-            csm->SetParent(sm);
-            sm->AddSib(csm);
+            sm->AddKid(csm);
+            //csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
+            //csm->SetParent(sm);
+            //sm->AddSib(csm);
           } else {
             csm = NULL;
             delete csm;
@@ -1057,9 +1062,9 @@ Condition *process_semi (
   if ((opt >= 2 & par_chp == ACT_CHP_LOOP) | par_chp == ACT_CHP_INF_LOOP) {
     tmp_com->c.push_back(term_cond);
   }
-  if (!pc & par_chp == ACT_CHP_INF_LOOP) {
+//  if (!pc) {
     sm->AddCondition(term_cond);
-  }
+//  }
 
   return term_cond;
 
