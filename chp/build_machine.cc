@@ -4,6 +4,7 @@
 
 /*
 ACT_CHP_COMMA = 0
+ACT_CHP_SEMI = 1
 ACT_CHP_SELECT = 2
 ACT_CHP_SELECT_NONDET = 3
 ACT_CHP_LOOP = 4
@@ -498,7 +499,7 @@ Condition *process_loop (
       if (gg->s->type == ACT_CHP_COMMA || 
           gg->s->type == ACT_CHP_SEMI || 
           inf_flag == 1) {
-        sm->AddCondition(tmp);
+ //       sm->AddCondition(tmp);
       } else {
         if (tmp) {
           sm->AddKid(csm);
@@ -558,6 +559,112 @@ Condition *process_loop (
     return NULL;
   }
 
+}
+
+Condition *process_do_loop (
+                        Process *proc, 
+                        act_chp_lang_t *chp_lang, 
+                        StateMachine *sm,
+                        StateMachine *tsm,
+                        Condition *pc,
+                        int par_chp,
+                        int opt
+                        ) {
+
+  Scope *scope;
+  scope = proc->CurScope();
+  act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
+
+  //Do loop is a contruction which guarantees at least one execution
+  //of a branch statement. Do loop has only one guard and so only one
+  //branch
+  //!!! No support for an infinite DO LOOP since it doesn't make sense
+  //and one can use regular loop
+  std::vector<Condition *> vc;
+
+  //Create execution state and corresponding condition
+  State *zero_s = new_state(ACT_CHP_DOLOOP, sm);
+  Condition *zero_s_cond = new_state_cond(zero_s, sm);
+
+  Condition *child_cond = NULL;
+  
+  act_chp_gc *gg = chp_lang->u.gc;
+
+  //First process statement part
+  //Create child condition with parent condition and zero state
+  vc.push_back(zero_s_cond);
+  if (pc) {
+    vc.push_back(pc);
+  }
+  child_cond = new_comma_cond_raw(0,vc,sm);
+
+  //Traverse lower levels of CHP hierarchy
+  StateMachine *csm;
+  if (gg->s->type != ACT_CHP_COMMA && 
+      gg->s->type != ACT_CHP_SEMI) {
+    csm = init_state_machine(sm);
+  } else {
+    csm = sm;
+  }
+
+  Condition *tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_DOLOOP, opt);
+  vc.clear();
+
+  if (gg->s->type != ACT_CHP_COMMA && 
+      gg->s->type != ACT_CHP_SEMI) {
+    if (tmp) {
+      sm->AddKid(csm);
+    } else {
+      csm = NULL;
+      delete csm;
+    }
+  }
+
+  //Exit condition for guard evaluation
+  State *exit_s = new_state(gg->s->type, sm);
+  Condition *exit_s_cond = new_state_cond(exit_s, sm);
+
+  //Switching to the guard eval state
+  vc.push_back(zero_s_cond);
+  if (tmp) {
+    vc.push_back(tmp);
+  }
+  Condition *geval = new_comma_cond_raw(0, vc, sm);
+  zero_s->AddNextStateRaw(exit_s, geval);
+  vc.clear();
+
+  //Guard condition
+  Condition *g = NULL;
+  if (gg->s->type != ACT_CHP_SKIP && 
+      gg->s->type != ACT_CHP_FUNC) {
+    g = new_guard_cond(gg->g, sm);
+  } else {
+    return NULL;
+  }
+
+  //Switching conditing to the execution state for guard = TRUE 
+  vc.push_back(exit_s_cond);
+  vc.push_back(g);
+  if (pc) { vc.push_back(pc); }
+  Condition *ret_cond = new_comma_cond_raw(0, vc, sm);
+  zero_s->AddNextStateRaw(zero_s, ret_cond);
+  vc.clear();
+
+  //false guard condition
+  Condition *nguard_cond = new_one_cond_comma(2, g, sm);
+
+  if (pc) {
+    Condition *npar_cond;
+    npar_cond = new_one_cond_comma(2, pc, sm);
+    exit_s->AddNextStateRaw(zero_s,npar_cond);
+  }
+
+  //machine termination is when guard is false and state is exit
+  vc.push_back(exit_s_cond);
+  vc.push_back(nguard_cond);
+  Condition *term_cond = new_comma_cond_raw(0, vc, sm);
+
+  return term_cond;
 }
 
 Condition *process_select_nondet (
@@ -996,18 +1103,13 @@ Condition *process_semi (
           }
         }
       } else {
-        if (opt >= 1) {
-          Comma *child_com = new Comma();
-          child_com->type = 0;
-          child_com->c.push_back(tmp);
-          if (pc) { child_com->c.push_back(pc); }
-          child_cond = new Condition(child_com, sm->GetCCN(), sm);
-          sm->AddCondition(child_cond);
-        } else {
-          child_cond = tmp;
-        }
+        Comma *child_com = new Comma();
+        child_com->type = 0;
+        child_com->c.push_back(tmp);
+        if (pc) { child_com->c.push_back(pc); }
+        child_cond = new Condition(child_com, sm->GetCCN(), sm);
+        sm->AddCondition(child_cond);
       }
-
 
       //If next statement is semi then do nothing
       if (cl->type == ACT_CHP_SEMI) {
@@ -1036,16 +1138,12 @@ Condition *process_semi (
             sm->AddKid(csm);
           } else if (cl->type == ACT_CHP_LOOP) {
             sm->AddKid(csm);
-            //csm->SetNumber(sm->GetNum() + sm->GetSibs() + 1);
-            //csm->SetParent(sm);
-            //sm->AddSib(csm);
           } else {
             csm = NULL;
             delete csm;
           }
         }
       }
-
       //if valid condition returned - replace old valid
       //termination condition
       if (tmp) {
@@ -1192,7 +1290,7 @@ Condition *traverse_chp(Process *proc,
     return process_loop(proc,chp_lang,sm,tsm,pc,par_chp,opt);
   }
   case ACT_CHP_DOLOOP: {
-    return NULL;
+    return process_do_loop(proc,chp_lang,sm,tsm,pc,par_chp,opt);
   }
   case ACT_CHP_SKIP: {
     return NULL;
@@ -1237,6 +1335,7 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   unsigned int chan = 0;
   ihash_bucket *hb;
   int reg = 1;
+
   for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
     if (bnl->chpports[i].omit) { continue; }
     reg = 1;
@@ -1248,9 +1347,9 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
     hb = ihash_lookup(bnl->cH, (long)tmp_c);
     act_booleanized_var_t *bv;
 
-    if (hb) {    
+    if (hb) {
       bv = (act_booleanized_var_t *)hb->v;
-   
+
       tmp_w = bv->width;
       chan = bv->ischan;
     }
@@ -1426,27 +1525,6 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     is_port = bv->ischpport;
     id = bv->id->toid()->Canonical(cs);
     vx = id->toid()->rootVx(cs);
-    //for (auto j = 0; j < A_LEN(bnl->instchpports); j++) {
-    //  act_connection *c = bnl->instchpports[j]->toid()->Canonical(cs);
-    //  if (bv->id == c) {
-    //    is_i_port = 1;
-    //    break;
-    //  } else {
-    //    is_i_port = 0;
-    //  }
-    //}
-    //if (is_port == 0 && is_i_port == 1) {
-    //  if (tsm->GetInstPortDir(id) == 0) {
-    //    type = 1;
-    //  } else {
-    //    type = 0;
-    //  }
-    //} else {
-    //  type = 0;
-    //}
-    //if (bv->input == 1 && bv->output == 1 && is_i_port == 1) {
-    //  type = 2;
-    //}
     if (bv->isint == 1 && bv->ischpport == 0) { type = 0; }
     if (bv->isint == 1 && bv->ischpport == 1) { type = 1; }
     else if (bv->ischpport == 1) { type = 0; }

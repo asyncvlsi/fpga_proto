@@ -805,7 +805,7 @@ void Data::PrintVerilogHSlhs(std::string &str) {
     cid = u.recv.chan->Canonical(s);
   } else if (type == 2) {
     cid = id->Canonical(s);
-  }
+  } 
   
   if (type == 1) {
     u.recv.chan->sPrint(tmp,1024);
