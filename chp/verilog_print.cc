@@ -803,13 +803,13 @@ void Data::PrintVerilogHSlhs(std::string &str) {
   
   if (type == 1) {
     cid = u.recv.chan->Canonical(s);
-  } else if (type == 2) {
+  } else if (type == 2 || type == 4) {
     cid = id->Canonical(s);
-  } 
+  }
   
   if (type == 1) {
     u.recv.chan->sPrint(tmp,1024);
-  } else if (type == 2) {
+  } else if (type == 2 || type == 4) {
     id->sPrint(tmp,1024);
   }
   str += tmp;
@@ -839,21 +839,25 @@ void Data::PrintVerilogHSrhs(std::string &str){
 
 void StateMachine::PrintVerilogDataHS()
 {
-  int first = 0;
   std::string hs;
 
   for (auto id : hs_data) {
-    hs += "always @(*)\n\t\\";
-    first = 0;
-    id.second[0]->PrintVerilogHSlhs(hs);
-    hs += " <= (";
-    for (auto dd : id.second) {
-      if (dd->GetType() == 1 || dd->GetType() == 2) {
-        dd->PrintVerilogHSrhs(hs);
-        if (dd != id.second[id.second.size()-1]) { hs += " | "; }
+    if (id.second[0]->GetType() == 4) {
+      hs += "always @(posedge clock)\nif (reset)\n\t\\";
+      id.second[0]->PrintVerilogHSlhs(hs);
+      hs += " <= 0";
+    } else {
+      hs += "always @(*)\n\t\\";
+      id.second[0]->PrintVerilogHSlhs(hs);
+      hs += " <= (";
+      for (auto dd : id.second) {
+        if (dd->GetType() == 1 || dd->GetType() == 2) {
+          dd->PrintVerilogHSrhs(hs);
+          if (dd != id.second[id.second.size()-1]) { hs += " | "; }
+        }
       }
+      hs += " ) & ~reset ";
     }
-    hs += " ) & ~reset ";
     hs += ";\n\n";
     fprintf(output_file, "%s", hs.c_str());
     hs.clear();

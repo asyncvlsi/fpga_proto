@@ -859,175 +859,143 @@ Condition *process_select (
   Condition *guard = NULL;
   State *ss = NULL;
 
-  //Flags for cases when parametarized select turns out
-  //to be useless
-  //[ pbool(false) -> bla bla
-  //[]else -> skip
-  //] -> nothing going to happen
-  int empty_select = 0;
   int else_flag = 0;
 
-  //Check if the selection statement is empty
-  for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
-    if (gg->g){
-      if (gg->g->type == E_FALSE) { 
-        empty_select = 1;
-        continue;
-      }
-      if (gg->s && gg->s->type != ACT_CHP_SKIP &&
-                   gg->s->type != ACT_CHP_FUNC) {
-        empty_select = 0;
-        break;
-      } else {
-        empty_select = 1;
-        continue;
-      }
-    } else {
-      if (gg->s && gg->s->type != ACT_CHP_SKIP &&
-                   gg->s->type != ACT_CHP_FUNC) {
-        empty_select = 0;
-        break;
-      } else {
-        empty_select = 1;
-        continue;
-      }
-    }
-  }
-
   //Process all selection options
-  if (empty_select == 0) {
-    for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
+  for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
 
-      //If guard is not NULL
-      if (gg->g) {
-        if (gg->s && gg->s->type != ACT_CHP_SKIP
-                  && gg->s->type != ACT_CHP_FUNC) {
+    //If guard is not NULL
+    if (gg->g) {
+      if (gg->s) {
+        if (gg->s->type != ACT_CHP_SKIP &&
+            gg->s->type != ACT_CHP_FUNC) {
           guard = new_guard_cond(gg->g, sm);
           ve.push_back(guard);
-        } else {
-          continue;
         }
-      //Guard is NULL then it is an else statement
       } else {
-        if (gg->s->type == ACT_CHP_FUNC) {
-          char tmp_f[1024] = "log";
-          if (strcmp(tmp_f, gg->s->u.func.name->s) != 0){
-            fprintf(stdout, "%s\n", tmp_f);
-            fatal_error("I don't know this function");
-          }
+        guard = new_guard_cond(gg->g, sm);
+        ve.push_back(guard);
+      }
+    //Guard is NULL then it is an else statement
+    } else {
+      if (gg->s->type == ACT_CHP_FUNC) {
+        char tmp_f[1024] = "log";
+        if (strcmp(tmp_f, gg->s->u.func.name->s) != 0){
+          fprintf(stdout, "%s\n", tmp_f);
+          fatal_error("I don't know this function");
         }
-        guard = NULL;
-        else_flag = 1;
+      }
+      guard = NULL;
+      else_flag = 1;
+    }
+
+    //If statement is not NULL
+    Condition *tmp = NULL;
+    if (gg->s) {
+      //Create dummy skip state for skip and func statements
+      //with a valid guard
+      if (gg->s->type != ACT_CHP_FUNC || gg->s->type != ACT_CHP_SKIP) {
+        ss = new_state(gg->s->type, sm);
+      } else {
+        ss = new_state(ACT_CHP_SKIP, sm);
+      }
+      tmp = new_state_cond(ss, sm);
+
+      vg.push_back(zero_s_cond);
+      if (pc) { vg.push_back(zero_s_cond); }
+
+      //Create conditions(full guard) to switch to the execution
+      //states using initial condition and corresponding
+      //guards. If guard is NULL (else) use else vector
+      //equal to all guards being false as a secondary 
+      //switching condition
+      if (else_flag == 1) {
+        if (ve.size() > 0) {
+          Condition *else_guard = new_comma_cond_raw(2, ve, sm);
+          vg.push_back(else_guard);
+        }
+      } else {
+        vg.push_back(guard);
       }
 
-      //If statement is not NULL
-      Condition *tmp = NULL;
-      if (gg->s) {
-        //Create dummy skip state for skip and func statements
-        //with a valid guard
-        if (gg->s->type != ACT_CHP_FUNC || gg->s->type != ACT_CHP_SKIP) {
-          ss = new_state(gg->s->type, sm);
+      Condition *full_guard = new_comma_cond_raw(0, vg, sm);
+      s->AddNextStateRaw(ss, full_guard);
+      vg.clear();
+
+      //Create child conditions using execution states
+      Condition *tmp_cond = NULL;
+      if (pc) {
+        tmp_cond = new_state_cond(ss, sm);
+        vg.push_back(tmp);
+        if (opt >= 1) { vg.push_back(pc); }
+        child_cond = new_comma_cond_raw(0, vg, sm);
+      } else {
+        child_cond = new_state_cond(s, sm);
+      }
+      vg.clear();
+
+      //Traverse the rest of the hierarchy
+      if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
+        tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
+      //If statement if skip of func then use execution state
+      //as a termination condition
+      } else if (gg->s->type == ACT_CHP_SKIP || gg->s->type == ACT_CHP_FUNC ) {
+        if (tmp_cond) {
+          tmp = tmp_cond;
         } else {
-          ss = new_state(ACT_CHP_SKIP, sm);
+          tmp = child_cond;
         }
-        tmp = new_state_cond(ss, sm);
-
-        vg.push_back(zero_s_cond);
-        if (pc) { vg.push_back(zero_s_cond); }
-
-        //Create conditions(full guard) to switch to the execution
-        //states using initial condition and corresponding
-        //guards. If guard is NULL (else) use else vector
-        //equal to all guards being false as a secondary 
-        //switching condition
-        if (else_flag == 1) {
-          if (ve.size() > 0) {
-            Condition *else_guard = new_comma_cond_raw(2, ve, sm);
-            vg.push_back(else_guard);
-          }
-        } else {
-          vg.push_back(guard);
-        }
-
-        Condition *full_guard = new_comma_cond_raw(0, vg, sm);
-        s->AddNextStateRaw(ss, full_guard);
-        vg.clear();
-
-        //Create child conditions using execution states
-        Condition *tmp_cond = NULL;
-        if (pc) {
-          tmp_cond = new_state_cond(ss, sm);
-          vg.push_back(tmp);
-          if (opt >= 1) { vg.push_back(pc); }
-          child_cond = new_comma_cond_raw(0, vg, sm);
-        } else {
-          child_cond = new_state_cond(s, sm);
-        }
-        vg.clear();
-
-        //Traverse the rest of the hierarchy
-        if (gg->s->type == ACT_CHP_COMMA || gg->s->type == ACT_CHP_SEMI) {
-          tmp = traverse_chp(proc, gg->s, sm, tsm, child_cond, ACT_CHP_SELECT, opt);
-        //If statement if skip of func then use execution state
-        //as a termination condition
-        } else if (gg->s->type == ACT_CHP_SKIP || gg->s->type == ACT_CHP_FUNC ) {
-          if (tmp_cond) {
-            tmp = tmp_cond;
-          } else {
-            tmp = child_cond;
-          }
-        } else {
-          StateMachine *csm = init_state_machine(sm);
-          tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_SELECT, opt);
-          if (tmp) {
-            sm->AddKid(csm);
-          } else {
-            csm = NULL;
-            delete csm;
-          }
-        }
+      } else {
+        StateMachine *csm = init_state_machine(sm);
+        tmp = traverse_chp(proc, gg->s, csm, tsm, child_cond, ACT_CHP_SELECT, opt);
         if (tmp) {
-          vc.push_back(tmp);
+          sm->AddKid(csm);
         } else {
-          vc.push_back(child_cond);
+          csm = NULL;
+          delete csm;
         }
       }
+      if (tmp) {
+        vc.push_back(tmp);
+      } else {
+        vc.push_back(child_cond);
+      }
+    } else {
+      if (pc) { ve.push_back(pc); }
+      ve.push_back(zero_s_cond);
+      Condition *short_term_cond = new_comma_cond_raw(0, ve, sm);
+      return short_term_cond;
     }
-
-    //Create new condition to switch to the exit state
-    //after execution completion. Use ORed child terminations
-    //conditions
-    Condition *exit_cond = new_comma_cond_raw(1, vc, sm);
-    State *exit_s = new_state(ACT_CHP_SKIP, sm);
-    ss->AddNextStateRaw(exit_s, exit_cond);
-    
-    Condition *exit_s_cond = new_state_cond(exit_s, sm);
-    vc.push_back(exit_s_cond);
-
-    //TODO: this is for later
-    //Comma *term_com = new Comma;
-    //term_com->type = 1;
-    //term_com->c = vc; 
-    //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-
-    //Create termination condition which is an exit state
-    Condition *term_cond = new_one_cond_comma(1, exit_s_cond, sm);
-
-    //Return to the initial state when parent is not in 
-    //the right state
-    if (pc) {
-      Condition *npar_cond = new_one_cond_comma(2, pc, sm);
-      exit_s->AddNextStateRaw(s, npar_cond);
-    }
-
-    return term_cond;
-
-  } else {
-
-    //Return NULL on the empty selection statement
-    return NULL;
-
   }
+
+  //Create new condition to switch to the exit state
+  //after execution completion. Use ORed child terminations
+  //conditions
+  Condition *exit_cond = new_comma_cond_raw(1, vc, sm);
+  State *exit_s = new_state(ACT_CHP_SKIP, sm);
+  ss->AddNextStateRaw(exit_s, exit_cond);
+  
+  Condition *exit_s_cond = new_state_cond(exit_s, sm);
+  vc.push_back(exit_s_cond);
+
+  //TODO: this is for later
+  //Comma *term_com = new Comma;
+  //term_com->type = 1;
+  //term_com->c = vc; 
+  //Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
+
+  //Create termination condition which is an exit state
+  Condition *term_cond = new_one_cond_comma(1, exit_s_cond, sm);
+
+  //Return to the initial state when parent is not in 
+  //the right state
+  if (pc) {
+    Condition *npar_cond = new_one_cond_comma(2, pc, sm);
+    exit_s->AddNextStateRaw(s, npar_cond);
+  }
+
+  return term_cond;
+
 }
 
 Condition *process_semi (
@@ -1130,7 +1098,7 @@ Condition *process_semi (
       //The rest statement cases
       } else {
         if (sm->IsEmpty()) {
-          tmp = traverse_chp(proc, cl, sm, sm, child_cond, ACT_CHP_SEMI, opt);
+          tmp = traverse_chp(proc, cl, sm, tsm, child_cond, ACT_CHP_SEMI, opt);
         } else {
           StateMachine *csm = init_state_machine(sm);
           tmp = traverse_chp(proc, cl, csm, tsm, child_cond, ACT_CHP_SEMI, opt);
@@ -1409,7 +1377,7 @@ void map_instances(CHPProject *cp){
 }
 
 //Adding all instances in the current process
-void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
+void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm) {
 
   ActUniqProcInstiter i(cs);
   
@@ -1497,6 +1465,9 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
       }
     }
   }
+
+  return;
+
 }
 
 void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
@@ -1567,7 +1538,45 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     }
     tsm->AddVar(var);
   }
-  
+
+  return;
+
+}
+
+//Fuction to find and add empty Data to only
+//initialize variables at reset.
+//Example: *[[#X]]
+void init_unused_ports (StateMachine *tsm)
+{
+
+  int used = 0;
+
+  for (auto p : tsm->GetPorts()) {
+
+    //Only check HSData because we interested in channel used
+    //just for probing
+    for (auto c : tsm->GetHSData()) {
+      if (c.first == p->GetCon()) {
+        used = 1;
+        break;
+      }
+    }
+    if (used == 0) {
+      for (auto ip : tsm->GetInstPorts()) {
+        if (ip.first == p->GetCon()) {
+          used = 1;
+          break;
+        }
+      }
+    }
+    if (used == 0 && p->GetChan()) {
+      Data *d = new Data(4, 0, 0, tsm->GetProc(), tsm, NULL, NULL, p->GetCon()->toid(), p->GetCon()->toid());
+      tsm->AddHS(p->GetCon(), d);
+    }
+    used = 0;
+  }
+
+  return;
 }
 
 //Function to traverse act data strcutures and walk
@@ -1642,6 +1651,9 @@ CHPProject *build_machine (Act *a, Process *p, int opt) {
 
   CHPProject *cp = new CHPProject();
   traverse_act (p, cp, opt);
+  for (auto sm = cp->Head(); sm; sm = sm->Next()) {
+    init_unused_ports(sm);
+  }
   map_instances(cp);
 
   return cp;

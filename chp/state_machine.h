@@ -208,12 +208,14 @@ public:
   int GetSibs();
   StateMachine *GetPar();
   StateMachine *GetNext();
+  std::map<act_connection*, std::vector<Data *>> GetData() { return data; };
+  std::map<act_connection*, std::vector<Data *>> GetHSData() { return hs_data; };
   std::vector<Variable *> GetVars();
   inline Variable *GetVarRaw(act_connection *c) { return vm[c]; };
   std::vector<Port *> GetPorts();
   Process *GetProc();
   std::vector<StateMachineInst *> GetInst();
-  std::map<act_connection *, std::vector<Port *>> GetInstPorts() {return _ports; };
+  std::map<act_connection *, std::vector<Port *>> GetInstPorts() { return _ports; };
   inline int GetType() { return top->GetType(); };
 
   void PrintParent(StateMachine *, int);
@@ -227,6 +229,8 @@ public:
   void PrintVerilogVars();
   void PrintVerilogData();
   void PrintVerilogDataHS();
+
+  StateMachine *Next() { return next; }
 
 private:
 
@@ -329,6 +333,7 @@ private:
             //1 - recv
             //2 - send
             //3 - function
+            //4 - unused (only reset to 0)
 
   int up; //array slice upper boundary
   int dn; //array slice lower boundary

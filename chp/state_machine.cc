@@ -93,7 +93,7 @@ void StateMachine::AddVar(Variable *v_){
   vars.push_back(v_); 
   vm[v_->GetCon()] = v_;
 }
-void StateMachine::AddData(act_connection* id, Data *dd) {data[id].push_back(dd);}
+void StateMachine::AddData(act_connection* id, Data *dd) {data[id].push_back(dd); }
 void StateMachine::AddHS(act_connection* id, Data *dd) {hs_data[id].push_back(dd);}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
