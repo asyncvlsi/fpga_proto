@@ -82,6 +82,31 @@ int StateMachine::IsPort(act_connection *c_) {
   return 0;
 }
 
+//Return back to initialized state
+void StateMachine::Clear() {
+  size = 0;
+  guard_num = 0;
+  st_num = 0;
+  commun_num = 0;
+  comma_num = 0;
+  top = NULL;
+  inst.clear();
+  data.clear();
+  hs_data.clear();
+  ports.clear();
+  _ports.clear();
+  vars.clear();
+  vm.clear();
+  guard_condition.clear();
+  state_condition.clear();
+  commu_condition.clear();
+  comma_condition.clear();
+  arb.clear();
+  csm.clear();
+  ssm.clear();
+  next = NULL;
+}
+
 void StateMachine::AddInst (StateMachineInst *inst_) {
   inst.push_back(inst_);
 }

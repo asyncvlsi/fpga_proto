@@ -720,12 +720,14 @@ void Data::PrintVerilogAssignment(std::string &str) {
 //f = 0 - if
 //f = 1 - else if
 //f = 2 - else
+//f = 3 - combinational else
 void Data::PrintVerilog(int f, std::string &da)
 {
   char tmp[1024];
 
   if (f == 0) { da += "if ("; }
-  else if (f == 1) { da += "else if ("; }
+  else if (f == 1) { da += "else if ( "; }
+  else if (f == 3) { da += "else "; }
   if (f == 0 || f == 1) {
     if (type == 1) {
       u.recv.up_cond->PrintVerilogDeclRaw(da);
@@ -748,6 +750,12 @@ void Data::PrintVerilog(int f, std::string &da)
     da = da + tmp + " ;\n";
     da += "end";
   }
+  if (f == 3) {
+    da += " begin\n";
+    printed = 0;
+    PrintVerilogAssignment(da);
+    da += "end ";
+  }
 
   return;
 }
@@ -769,7 +777,7 @@ void StateMachine::PrintVerilogData()
     } else {
       da += "always @(posedge \\clock )\n";
     }
-    
+  
     if (!dv) {
       id.first->toid()->sPrint(tmp,1024);
       da = da + "if (\\reset ) begin\n\t\\" + tmp + " <= 0;\nend ";
@@ -781,8 +789,10 @@ void StateMachine::PrintVerilogData()
         dd->PrintVerilog(ef, da);
         ef = 1;
       }
-      if (dd == id.second[id.second.size()-1]) {
+      if (dd == id.second[id.second.size()-1] && id.second[0]->GetType() != 2) {
         if (!dv) { dd->PrintVerilog(2, da); }
+      } else if (dd == id.second[id.second.size()-1] && id.second[0]->GetType() == 2) {
+        id.second[0]->PrintVerilog(3,da);
       }
     }
     ef = 0;

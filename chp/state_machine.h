@@ -40,6 +40,9 @@ public:
   int GetNum();
   StateMachine *GetScope();
 
+  void SetScope(StateMachine *sm) { scope = sm; }
+  void SetNum(int _n) { num = _n; }
+
   inline void MkArb(){ type = 4; };
 
   void PrintPlain();
@@ -229,6 +232,8 @@ public:
   void PrintVerilogVars();
   void PrintVerilogData();
   void PrintVerilogDataHS();
+
+  void Clear();
 
   StateMachine *Next() { return next; }
 
