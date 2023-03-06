@@ -689,14 +689,10 @@ Condition *process_select_nondet (
     vg.clear();
 
     Condition *tmp_cond = NULL;
-    if (pc) {
-      tmp_cond = new_state_cond(ss, sm);
-      vg.push_back(tmp_cond);
-      if (opt >= 1) { vg.push_back(pc); }
-      child_cond = new_comma_cond_raw(0, vg, sm);
-    } else {
-      child_cond = new_state_cond(s, sm);
-    }
+    tmp_cond = new_state_cond(ss, sm);
+    vg.push_back(tmp_cond);
+    if (pc) { vg.push_back(pc); }
+    child_cond = new_comma_cond_raw(0, vg, sm);
     vg.clear();
 
     //Traverse the rest of the hierarchy
@@ -747,9 +743,11 @@ Condition *process_select_nondet (
 
   //Return to the initial state when parent is not in 
   //the right state
-  if (pc) {
+  if (pc || par_chp != ACT_CHP_INF_LOOP) {
     Condition *npar_cond = new_one_cond_comma(2, pc, sm);
     exit_s->AddNextStateRaw(s, npar_cond);
+  } else if (par_chp == ACT_CHP_INF_LOOP) {
+    exit_s->AddNextStateRaw(s, exit_s_cond);
   }
 
   tsm->AddArb(arb);
@@ -835,7 +833,7 @@ Condition *process_select (
     tmp = new_state_cond(ss, sm);
 
     vg.push_back(zero_s_cond);
-    if (pc) { vg.push_back(zero_s_cond); }
+    if (pc) { vg.push_back(pc); }
 
     //Create conditions(full guard) to switch to the execution
     //states using initial condition and corresponding
@@ -857,14 +855,10 @@ Condition *process_select (
 
     //Create child conditions using execution states
     Condition *tmp_cond = NULL;
-    if (pc) {
-      tmp_cond = new_state_cond(ss, sm);
-      vg.push_back(tmp);
-      if (opt >= 1) { vg.push_back(pc); }
-      child_cond = new_comma_cond_raw(0, vg, sm);
-    } else {
-      child_cond = new_state_cond(s, sm);
-    }
+    tmp_cond = new_state_cond(ss, sm);
+    vg.push_back(tmp);
+    if (pc) { vg.push_back(pc); }
+    child_cond = new_comma_cond_raw(0, vg, sm);
     vg.clear();
 
     //Traverse the rest of the hierarchy
@@ -920,9 +914,11 @@ Condition *process_select (
 
   //Return to the initial state when parent is not in 
   //the right state
-  if (pc) {
+  if (pc || par_chp != ACT_CHP_INF_LOOP) {
     Condition *npar_cond = new_one_cond_comma(2, pc, sm);
     exit_s->AddNextStateRaw(s, npar_cond);
+  } else if (par_chp == ACT_CHP_INF_LOOP) {
+    exit_s->AddNextStateRaw(s, exit_s_cond);
   }
 
   return term_cond;

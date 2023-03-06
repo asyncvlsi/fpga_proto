@@ -1016,13 +1016,10 @@ void Arbiter::PrintInst(int n) {
 
   unsigned long size = log2(a.size());
   unsigned long total = pow(2,size);
-printf("SIZE BEFORE: %li\n", size);
   if (total != a.size()) {
-printf("HERE\n");
     size = size + 1;
     total = pow(2, size);
   }
-printf("%li %li %ld\n", size, total, a.size());
 
   if (total > a.size()) { arb += "wire [" + std::to_string(total-a.size()-1) + ":0] placeholder_arb_" + std::to_string(n) + ";\n"; }
 
