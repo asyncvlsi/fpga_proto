@@ -1026,7 +1026,7 @@ printf("%li %li %ld\n", size, total, a.size());
 
   if (total > a.size()) { arb += "wire [" + std::to_string(total-a.size()-1) + ":0] placeholder_arb_" + std::to_string(n) + ";\n"; }
 
-  arb += "rr #(\n\t.WIDTH(" + std::to_string(size) + ")\n";
+  arb += "rr #(\n\t.W(" + std::to_string(size) + ")\n";
   arb += ") arb_" + std::to_string(n) + " (\n";
   arb += "\t .\\clock (\\clock )\n\t,.\\reset (\\reset )\n\t,.req ({";
 
