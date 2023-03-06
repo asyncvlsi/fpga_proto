@@ -1041,7 +1041,7 @@ printf("%li %li %ld\n", size, total, a.size());
   }
   arb += " })\n";
 
-  arb += "\t,.grant ({";
+  arb += "\t,.gnt ({";
   if (total > a.size()) { arb += "placeholder_arb_" + std::to_string(n) + ", "; }
   for (auto i : a) {
     arb += "\\";
