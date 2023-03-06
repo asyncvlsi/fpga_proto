@@ -2,6 +2,7 @@
 #include <act/passes/booleanize.h>
 #include <act/state_machine.h>
 #include <string>
+#include <math.h>
 
 namespace fpga {
 
@@ -1013,10 +1014,23 @@ void Arbiter::PrintInst(int n) {
 
   std::string arb;
 
-  arb += "fair_hi #(\n\t.WIDTH(" + std::to_string(a.size()) + ")\n";
+  unsigned long size = log2(a.size());
+  unsigned long total = pow(2,size);
+printf("SIZE BEFORE: %li\n", size);
+  if (total != a.size()) {
+printf("HERE\n");
+    size = size + 1;
+    total = pow(2, size);
+  }
+printf("%li %li %ld\n", size, total, a.size());
+
+  if (total > a.size()) { arb += "wire [" + std::to_string(total-a.size()-1) + ":0] placeholder_arb_" + std::to_string(n) + ";\n"; }
+
+  arb += "rr #(\n\t.WIDTH(" + std::to_string(size) + ")\n";
   arb += ") arb_" + std::to_string(n) + " (\n";
   arb += "\t .\\clock (\\clock )\n\t,.\\reset (\\reset )\n\t,.req ({";
 
+  for (auto i = 0; i < total - a.size(); i++) { arb += "1'b0,"; }
   for (auto i : a) {
     arb += "\\";
     i->PrintScopeVar(i->GetScope(), arb);
@@ -1028,6 +1042,7 @@ void Arbiter::PrintInst(int n) {
   arb += " })\n";
 
   arb += "\t,.grant ({";
+  if (total > a.size()) { arb += "placeholder_arb_" + std::to_string(n) + ", "; }
   for (auto i : a) {
     arb += "\\";
     i->PrintScopeVar(i->GetScope(), arb);
@@ -1048,75 +1063,72 @@ void Arbiter::PrintInst(int n) {
 void Arbiter::PrintArbiter(FILE *fout){
 std::string arb;
 arb += "`timescale 1ns/1ps\n";
-arb += "module fair_hi #(\n";
-arb += "\tparameter   WIDTH = 8\n";
+arb += "module rr\n";
+arb += "#(\n";
+arb += "\tparameter W = 4\n";
 arb += ")(\n";
-arb += "\t\tinput   clock,\n";
-arb += "\t\tinput   reset,\n";
-arb += "\t\tinput   [WIDTH-1:   0]  req,\n";
-arb += "\t\toutput  [WIDTH-1:   0]  grant\n";
-arb += "\t);\n";
-arb += "\t\n";
-arb += "reg\t[WIDTH-1:0]\tpriorit [0:WIDTH-1];\n";
+arb += "\t input\t\t\t\tclock\n";
+arb += "\t,input\t\t\t\treset\n";
+arb += "\t,input\t[2**W-1:0]\treq\n";
+arb += "\t,output\t[2**W-1:0]\tgnt\n";
+arb += ");\n";
 arb += "\n";
-arb += "reg\t[WIDTH-1:0]\treq_d;\n";
-arb += "wire\t[WIDTH-1:0]\treq_neg;\n";
+arb += "wire\t[2**W-1:0]\ttfpe\t[W:0][1:0];\n";
 arb += "\n";
-arb += "wire shift_prio;\n";
+arb += "wire\t\t\t\thp_gnt;\n";
 arb += "\n";
-arb += "wire [WIDTH-1:0] match;\n";
-arb += "reg [WIDTH-1:0] arb_match;\n";
+arb += "reg\t\t[2**W-1:0]\tmask;\n";
+arb += "\n";
+arb += "wire\t[2**W-1:0]\tth_gnt;\n";
+arb += "\n";
+arb += "wire\t[2**W-1:0]\treq_masked;\n";
 arb += "\n";
 arb += "always @(posedge clock)\n";
-arb += "if (reset)\n";
-arb += "\treq_d <=  0;\n";
-arb += "else\n";
-arb += "\treq_d <= req;\n";
+arb += "if (reset) mask <= 0;\n";
+arb += "else       mask <= th_gnt; \n";
 arb += "\n";
-arb += "assign shift_prio = |(req_neg & priorit[0]) & !(|arb_match);\n";
-arb += "\t\n";
-arb += "genvar j;\n";
-arb += "genvar i;\n";
+arb += "assign req_masked = req & mask;\n";
 arb += "\n";
+arb += "genvar i, j, k;\n";
 arb += "generate\n";
-arb += "for (j = WIDTH; j > 0; j = j-1) begin    \n";
+arb += "for (j = 0; j < 2; j = j + 1) begin\n";
+arb += "\tfor (k = 0; k < W+1; k = k + 1) begin\n";
+arb += "\t\tfor (i = 0; i < 2**W; i = i + 1) begin\n";
 arb += "\n";
-arb += "always @ (*)\n";
-arb += "if (j > 1)\n";
-arb += "\tif (match[j-1] & &(!match[j-2:0]))\tarb_match[j-1] <= 1'b1;\n";
-arb += "\telse\t\t\t\t\t\t\t\tarb_match[j-1] <= 1'b0;\n";
-arb += "else\n";
-arb += "\tif (match[j-1])\tarb_match[j-1] <= 1'b1;\n";
-arb += "\telse\t\t\tarb_match[j-1]  <= 1'b0;\n";
+arb += "\t\tif (k == 0) begin\n";
+arb += "\t\t\tif (j == 0)\n";
+arb += "\t\t\t\tif ((i % 2) == 1)   assign tfpe[k][j][i] = req_masked[i];\n";
+arb += "\t\t\t\telse                assign tfpe[k][j][i] = req_masked[i] | req_masked[i+1];\n";
+arb += "\t\t\telse\n";
+arb += "\t\t\t\tif ((i % 2) == 1)   assign tfpe[k][j][i] = req[i];\n";
+arb += "\t\t\t\telse                assign tfpe[k][j][i] = req[i] | req[i+1];\n";
+arb += "\t\tend\n";
+arb += "\n";
+arb += "\t\telse if (k == W) begin\n";
+arb += "\t\t\tif (i == 0 | i == (2**W-1)) assign tfpe[k][j][i] = tfpe[k-1][j][i];\n";
+arb += "\t\t\telse if ((i % 2) == 1)      assign tfpe[k][j][i] = tfpe[k-1][j][i] | tfpe[k-1][j][i+1];\n";
+arb += "\t\t\telse                        assign tfpe[k][j][i] = tfpe[k-1][j][i];\n";
+arb += "\t\tend\n";
+arb += "\n";
+arb += "\t\telse begin\n";
+arb += "\t\t\tif (((i % 2) == 1) | ((i > (2**W-2**k-1)))) assign tfpe[k][j][i] =  tfpe[k-1][j][i];\n";
+arb += "\t\t\telse                                        assign tfpe[k][j][i] =  tfpe[k-1][j][i] | tfpe[k-1][j][i+(2**k)];\n";
+arb += "\t\tend\n";
+arb += "\n";
+arb += "\t\tend\n";
+arb += "\tend\n";
 arb += "end\n";
 arb += "endgenerate\n";
 arb += "\n";
-arb += "generate\n";
-arb += "for (j = 0; j < WIDTH; j = j+1) begin\n";
+arb += "assign hp_gnt = |tfpe[W][0];\n";
+arb += "assign th_gnt = hp_gnt ? tfpe[W][0] : tfpe[W][1];\n";
 arb += "\n";
-arb += "assign req_neg[j] = !req[j] & req_d[j];\n";
+arb += "wire [2**W:0] pre_gnt;\n";
+arb += "assign pre_gnt = {1'b0, th_gnt} ^ {th_gnt, 1'b1};\n";
+arb += "assign gnt = pre_gnt[2**W:1];\n";
 arb += "\n";
-arb += "assign grant = req & priorit[0];\n";
-arb += "\n";
-arb += "assign match[j] = |(req & priorit[j]);\n";
-arb += "\n";
-arb += "always @(posedge clock)\n";
-arb += "if (reset)\n";
-arb += "\tpriorit[j] <= {{j{1'b0}},1'b1,{(WIDTH-1-j){1'b0}}};\n";
-arb += "else if (shift_prio)\n";
-arb += "\tif (priorit[j] == 1)\n";
-arb += "\t\tpriorit[j] <= {1'b1, {(WIDTH-1){1'b0}}};\n";
-arb += "\telse\n";
-arb += "\t\tpriorit[j] <= priorit[j] >> 1;\n";
-arb += "else if (arb_match[j]) begin\n";
-arb += "\tpriorit[0] <= priorit[j];\n";
-arb += "\tpriorit[j] <= priorit[0];\n";
-arb += "end\n";
-arb += "\t\n";
-arb += "end\n";
-arb += "endgenerate\n";
-arb += "\t\n";
-arb += "endmodule\n";
+arb += "endmodule\n\n";
+
 fprintf(fout, "%s", arb.c_str());
 arb.clear();
 return;

@@ -752,7 +752,7 @@ Condition *process_select_nondet (
     exit_s->AddNextStateRaw(s, npar_cond);
   }
 
-  sm->AddArb(arb);
+  tsm->AddArb(arb);
 
   return term_cond;
 
