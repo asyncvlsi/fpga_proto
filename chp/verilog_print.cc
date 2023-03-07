@@ -117,7 +117,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_INT): {
-      str = str + "32'd" + std::to_string(e->u.ival.v);
+      str = str + "64'd" + std::to_string(e->u.ival.v);
       break;
     }
     case (E_VAR): {

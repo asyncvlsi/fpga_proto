@@ -743,7 +743,7 @@ Condition *process_select_nondet (
 
   //Return to the initial state when parent is not in 
   //the right state
-  if (pc || par_chp != ACT_CHP_INF_LOOP) {
+  if (pc && par_chp != ACT_CHP_INF_LOOP) {
     Condition *npar_cond = new_one_cond_comma(2, pc, sm);
     exit_s->AddNextStateRaw(s, npar_cond);
   } else if (par_chp == ACT_CHP_INF_LOOP) {
@@ -794,16 +794,8 @@ Condition *process_select (
 
     //If guard is not NULL
     if (gg->g) {
-      if (gg->s) {
-        if (gg->s->type != ACT_CHP_SKIP &&
-            gg->s->type != ACT_CHP_FUNC) {
-          guard = new_guard_cond(gg->g, sm);
-          ve.push_back(guard);
-        }
-      } else {
-        guard = new_guard_cond(gg->g, sm);
-        ve.push_back(guard);
-      }
+      guard = new_guard_cond(gg->g, sm);
+      ve.push_back(guard);
     //Guard is NULL then it is an else statement
     } else {
       if (gg->s->type == ACT_CHP_FUNC) {
@@ -819,14 +811,7 @@ Condition *process_select (
     //If statement is not NULL
     Condition *tmp = NULL;
     if (gg->s) {
-      //Create dummy skip state for skip and func statements
-      //with a valid guard
-      if (gg->s->type != ACT_CHP_FUNC || 
-          gg->s->type != ACT_CHP_SKIP) {
-        ss = new_state(gg->s->type, sm);
-      } else {
-        ss = new_state(ACT_CHP_SKIP, sm);
-      }
+      ss = new_state(gg->s->type, sm);
     } else {
       ss = new_state(ACT_CHP_SKIP, sm);
     }
@@ -914,7 +899,7 @@ Condition *process_select (
 
   //Return to the initial state when parent is not in 
   //the right state
-  if (pc || par_chp != ACT_CHP_INF_LOOP) {
+  if (pc && par_chp != ACT_CHP_INF_LOOP) {
     Condition *npar_cond = new_one_cond_comma(2, pc, sm);
     exit_s->AddNextStateRaw(s, npar_cond);
   } else if (par_chp == ACT_CHP_INF_LOOP) {
