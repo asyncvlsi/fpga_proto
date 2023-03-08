@@ -86,7 +86,7 @@ Condition *new_hs_cond (ActId *id, StateMachine *sm)
   return c;
 }
 
-//Function to create new comma condition
+//Function to create new comma conditio
 Condition *new_comma_cond (Comma *comma, StateMachine *sm)
 {
   Condition *c = new Condition(comma, sm->GetCCN(), sm);
@@ -925,7 +925,6 @@ Condition *process_semi (
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
   Condition *tmp = NULL;
 
-std::string tmp0;
   //Semi is a chain of statements. Every statement
   //execution is intiated by the termination condition
   //of its predecessor with an exception for the very
@@ -994,8 +993,6 @@ std::string tmp0;
 
       if (sm->IsEmpty()) {
         tmp = traverse_chp(proc, cl, sm, tsm, next_psm, child_cond, ACT_CHP_SEMI, opt);
- //       if (cl->type == ACT_CHP_SEMI ||
- //           cl->type == ACT_CHP_COMMA) { sm->AddCondition(tmp); }
         if (!next_psm) { next_psm = sm; }
       } else {
         StateMachine *csm = init_state_machine(sm);
@@ -1386,26 +1383,51 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     is_port = bv->ischpport;
     id = bv->id->toid()->Canonical(cs);
     vx = id->toid()->rootVx(cs);
-    if (bv->isint == 1 && bv->ischpport == 0) { type = 0; }
-    if (bv->isint == 1 && bv->ischpport == 1) { type = 1; }
-    else if (bv->ischpport == 1) { type = 0; }
-    else if (bv->input == 1 && bv->output == 1) {
-      if (tsm->GetInstPorts()[id].size() > 1) {
-        type = 2;
-      } else if (tsm->GetInstPorts()[id].size() == 1 && tsm->GetInstPorts()[id][0]->GetDir() == 0) { 
-        type = 1; 
-      } else {
-        type = 0;
+    ///
+    //Channel Type
+    if (bv->isint == 0 && bv->ischan == 1) {
+      if (bv->ischpport == 0) {
+        //Instance interconnection
+        if (tsm->GetInstPorts()[id].size() > 1) { type = 2; }
+        else if (tsm->GetInstPorts()[id].size() == 1 && 
+                  tsm->GetInstPorts()[id][0]->GetDir() == 0) { type = 1; }
+        else { type = 0; }
+      }
+    } 
+    //Integer Type
+    else if (bv->isint == 1 && bv->ischan == 0) {
+      if (bv->ischpport == 0) {
+        if (tsm->GetInstPorts()[id].size() > 1) { type = 1; }
+        else { type = 0; }
       }
     }
     chan = bv->ischan;
     port = bv->ischpport;
     dyn = 0;
-
     var = new Variable(type, chan, port, dyn, vx, id);
-    
     var->AddDimension(bv->width-1);
     tsm->AddVar(var);
+    ///  
+    //if (bv->isint == 1 && bv->ischpport == 0) { type = 0; }
+    //if (bv->isint == 1 && bv->ischpport == 1) { type = 1; }
+    //else if (bv->ischpport == 1) { type = 0; }
+    //else if (bv->input == 1 && bv->output == 1) {
+    //  if (tsm->GetInstPorts()[id].size() > 1) {
+    //    type = 2;
+    //  } else if (tsm->GetInstPorts()[id].size() == 1 && tsm->GetInstPorts()[id][0]->GetDir() == 0) { 
+    //    type = 1; 
+    //  } else {
+    //    type = 0;
+    //  }
+    //}
+    //chan = bv->ischan;
+    //port = bv->ischpport;
+    //dyn = 0;
+    //
+    //var = new Variable(type, chan, port, dyn, vx, id);
+    //
+    //var->AddDimension(bv->width-1);
+    //tsm->AddVar(var);
   }
 
   //Dynamic is always register
