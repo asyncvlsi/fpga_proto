@@ -562,32 +562,19 @@ Condition *process_do_loop (
   //Traverse lower levels of CHP hierarchy
   StateMachine *csm;
   csm = init_state_machine(sm);
- // if (gg->s->type != ACT_CHP_COMMA && 
- //     gg->s->type != ACT_CHP_SEMI) {
- //   csm = init_state_machine(sm);
- // } else {
- //   csm = sm;
- // }
 
   Condition *tmp;
   tmp = traverse_chp(proc, gg->s, csm, tsm, sm, child_cond, ACT_CHP_DOLOOP, opt);
 
   vc.clear();
 
- // if (gg->s->type != ACT_CHP_COMMA && 
- //     gg->s->type != ACT_CHP_SEMI) {
-    if (tmp) {
-      sm->AddKid(csm);
-    } 
- //   else {
- //     csm = NULL;
- //     delete csm;
- //   }
- // }
+  if (tmp) {
+    sm->AddKid(csm);
+  }
 
-  //Exit condition for guard evaluation
-  State *exit_s = new_state(gg->s->type, sm);
-  Condition *exit_s_cond = new_state_cond(exit_s, sm);
+  //Condition to switch to the guard evaluation state
+  State *g_ev_s = new_state(gg->s->type, sm);
+  Condition *g_ev_s_cond = new_state_cond(g_ev_s, sm);
 
   //Switching to the guard eval state
   vc.push_back(zero_s_cond);
@@ -595,7 +582,7 @@ Condition *process_do_loop (
     vc.push_back(tmp);
   }
   Condition *geval = new_comma_cond_raw(0, vc, sm);
-  zero_s->AddNextStateRaw(exit_s, geval);
+  zero_s->AddNextStateRaw(g_ev_s, geval);
   vc.clear();
 
   //Guard condition
@@ -608,26 +595,36 @@ Condition *process_do_loop (
   }
 
   //Switching conditing to the execution state for guard = TRUE 
-  vc.push_back(exit_s_cond);
+  vc.push_back(g_ev_s_cond);
   vc.push_back(g);
   if (pc) { vc.push_back(pc); }
   Condition *ret_cond = new_comma_cond_raw(0, vc, sm);
   zero_s->AddNextStateRaw(zero_s, ret_cond);
   vc.clear();
 
+  //Switching conditing to the execution state for guard = FALSE 
   //false guard condition
   Condition *nguard_cond = new_one_cond_comma(2, g, sm);
+
+  //Switching to hte exit state condition
+  vc.push_back(g_ev_s_cond);
+  vc.push_back(nguard_cond);
+  if (pc) { vc.push_back(pc); }
+  Condition *exit_cond = new_comma_cond_raw(0, vc, sm);
+
+  //Exit state
+  State *exit_s = new_state(ACT_CHP_SKIP, sm);
+  Condition *exit_s_cond = new_state_cond(exit_s, sm);
+  zero_s->AddNextStateRaw(exit_s, exit_cond);
+  vc.clear();
 
   if (pc) {
     Condition *npar_cond;
     npar_cond = new_one_cond_comma(2, pc, sm);
-    exit_s->AddNextStateRaw(zero_s,npar_cond);
+    g_ev_s->AddNextStateRaw(zero_s,npar_cond);
   }
 
-  //machine termination is when guard is false and state is exit
-  vc.push_back(exit_s_cond);
-  vc.push_back(nguard_cond);
-  Condition *term_cond = new_comma_cond_raw(0, vc, sm);
+  Condition *term_cond = new_one_cond_comma(1,exit_s_cond,sm);
 
   return term_cond;
 }
