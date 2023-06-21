@@ -54,7 +54,7 @@ Data::Data (int type_,
   id = id_;
   if (type_ == 0) {
     u.assign.e = e_;
-  } else if (type == 2) {
+  } else if (type == 2 || type == 5) {
     u.send.up_cond = up_cond_;
     u.send.se = e_;
   }

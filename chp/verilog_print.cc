@@ -1,3 +1,4 @@
+#include <common/int.h>
 #include <act/act.h>
 #include <act/passes/booleanize.h>
 #include <act/state_machine.h>
@@ -117,7 +118,13 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_INT): {
-      str = str + "64'd" + std::to_string(e->u.ival.v);
+      BigInt *bi;
+      if (e->u.ival.v_extra) {
+        bi = (BigInt*)e->u.ival.v_extra;
+        str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
+      } else {
+        str = str + "64'd" + std::to_string(e->u.ival.v);
+      }
       break;
     }
     case (E_VAR): {

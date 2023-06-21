@@ -59,7 +59,7 @@ int StateMachine::IsPort(act_connection *c_) {
   } else {
     tmp = ports;
   }
-  for (auto p : tmp) { //TODO: Ports in the SM need to have parent in case of siblings
+  for (auto p : tmp) {
     if (p->GetCon() == c_) {
       if (p->GetDir() == 0) {
         return 1;

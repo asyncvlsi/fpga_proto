@@ -19,7 +19,7 @@ public:
 
   void PrintPlain();
   void PrintVerilog(int, std::string&);
-  void PrintVerilogHSlhs(std::string&);
+  void PrintVerilogHSlhs(std::string&, int);
   void PrintVerilogHSrhs(std::string&);
   void PrintVerilogAssignment(std::string &);
 
@@ -33,6 +33,8 @@ private:
             //2 - send
             //3 - function
             //4 - unused (only reset to 0)
+            //5 - internal communication send
+            //6 - internal communication recv
 
   int up; //array slice upper boundary
   int dn; //array slice lower boundary
