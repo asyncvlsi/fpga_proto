@@ -199,7 +199,9 @@ Condition *process_recv (
     }
   }
 
-  d = new Data(1, 0, 0, proc, tsm, exit_cond,
+  int data_type = tsm->GetVarType(chan_con) == 3 ? 6 : 1;
+
+  d = new Data(data_type, 0, 0, proc, tsm, exit_cond,
                                 init_cond, var_id, chan_id);
   if (var_id) { tsm->AddData(var_con, d); }
   tsm->AddHS(chan_con, d);
@@ -290,7 +292,9 @@ Condition *process_send (
 
   Expr *se = chp_lang->u.comm.e;
 
-  d = new Data (2, 0, 0, proc, tsm, exit_cond, 
+  int data_type = tsm->GetVarType(chan_con) == 3 ? 5 : 2;
+
+  d = new Data (data_type, 0, 0, proc, tsm, exit_cond,
                                 init_cond, chan_id, se);
   if (se) { tsm->AddData(chan_con, d); }
   tsm->AddHS(chan_con, d);
@@ -665,8 +669,7 @@ Condition *process_select_nondet (
   for (auto gg = chp_lang->u.gc; gg; gg = gg->next) {
   
     //No NULL guard is possible unlike in the DET SELECTION
-    if (gg->s && gg->s->type != ACT_CHP_SKIP
-              && gg->s->type != ACT_CHP_FUNC) {
+    if (gg->s && gg->s->type != ACT_CHP_FUNC) {
       guard = new_guard_cond(gg->g, sm);
       guard->MkArb();
       arb->AddElement(guard);
@@ -698,7 +701,7 @@ Condition *process_select_nondet (
       tmp = traverse_chp(proc, gg->s, sm, tsm, sm, child_cond, 
                                            ACT_CHP_SELECT_NONDET, opt);
       //sm->AddCondition(tmp);
-    //If statement if skip of func then use execution state
+    //If statement is skip of func then use execution state
     //as a termination condition
     } else if (gg->s->type == ACT_CHP_SKIP || 
                gg->s->type == ACT_CHP_FUNC ) {
@@ -1388,7 +1391,9 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
         if (tsm->GetInstPorts()[id].size() > 1) { type = 2; }
         else if (tsm->GetInstPorts()[id].size() == 1 && 
                   tsm->GetInstPorts()[id][0]->GetDir() == 0) { type = 1; }
-        else { type = 0; }
+        else { type = 3; }
+      } else {
+        type = 1;
       }
     } 
     //Integer Type
