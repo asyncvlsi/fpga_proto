@@ -211,11 +211,15 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
           str +="_ready";
         } else if (sm->IsPort(cc) == 2){
           str +="_valid";
+        } else {
+          str +="_valid";
         }
       } else {
         if (scope->IsPort(cc) == 1) {
           str +="_ready";
         } else if (scope->IsPort(cc) == 2){
+          str +="_valid";
+        } else {
           str +="_valid";
         }
       }
@@ -470,7 +474,7 @@ void Variable::PrintVerilog() {
 
   std::string var;
 
-  if (type == 0) { var = "reg\t"; } 
+  if (type == 0 || type == 3) { var = "reg\t"; } 
   else { var = "wire\t"; }
 
   if (dim[0] >= 1) { var = var + "[" + std::to_string(dim[0]) + ":0]"; }
@@ -484,17 +488,35 @@ void Variable::PrintVerilog() {
   var += " ;\n";
   
   if (ischan != 0) {
-    if (type == 0) { var += "reg\t\\"; } 
+    if (type == 0 || type == 3) { var += "reg\t\\"; } 
     else { var += "wire\t\\"; }
     var = var + tmp + "_valid ;\n";
 
     if (type == 0 || type == 2) { var += "wire\t\\"; } 
     else { var += "reg\t\\"; }
     var = var + tmp + "_ready ;\n";
-  } 
+  }
+
+  std::string init;
+  if (isdyn == 1) {
+    std::string n;
+    init += "\n";
+    for (auto i = 1; i < dim.size(); i++) { n = std::to_string(i); init = init + "integer \\" + tmp + n + " ;\n"; }
+    init += "initial begin\n";
+    for (auto i = 1; i < dim.size(); i++) { n = std::to_string(i); init = init+"\tfor (\\"+tmp+n+" =0;\\"+tmp+n+" <"+std::to_string(dim[i])+";\\"+tmp+n+" =\\"+tmp+n+" +1) begin\n"; }
+    init = init + "\t\t\\" + tmp + " ";
+    for (auto i = 1; i < dim.size(); i++) { init = init+"[\\" + tmp + std::to_string(i) + " ]"; }
+    init += " <= 0;";
+    for (auto i = 1; i < dim.size(); i++) { init += "\tend\n"; }
+    init += "end\n\n";
+  }
 
   fprintf(output_file, "%s", var.c_str());
   var.clear();
+  if (isdyn == 1) {
+    fprintf(output_file, "%s", init.c_str());
+    init.clear();
+  }
 
   return;
 }
@@ -723,11 +745,11 @@ void Data::PrintVerilogAssignment(std::string &str) {
   str += " <= ";
   if (type == 0) {
     PrintExpression(u.assign.e, scope, str);
-  } else if (type == 1) {
+  } else if (type == 1 || type == 6) {
     str +=  "\\";
     u.recv.chan->sPrint(tmp,1024);
     str += tmp;
-  } else if (type == 2) {
+  } else if (type == 2 || type == 5) {
     PrintExpression(u.send.se, scope, str);
   }
   str += " ;\n";
@@ -747,9 +769,9 @@ void Data::PrintVerilog(int f, std::string &da)
   else if (f == 1) { da += "else if ( "; }
   else if (f == 3) { da += "else "; }
   if (f == 0 || f == 1) {
-    if (type == 1) {
+    if (type == 1 || type == 6) {
       u.recv.up_cond->PrintVerilogDeclRaw(da);
-    } else if (type == 2) {
+    } else if (type == 2 || type == 5) {
       u.send.up_cond->PrintVerilogDeclRaw(da);
     } else {
       cond->PrintVerilogDeclRaw(da);
@@ -822,27 +844,29 @@ void StateMachine::PrintVerilogData()
   return;
 }
 
-void Data::PrintVerilogHSlhs(std::string &str) {
+void Data::PrintVerilogHSlhs(std::string &str, int func) {
 
   Scope *s = act_scope->CurScope();
   act_connection *cid;
   
   char tmp[1024];
   
-  if (type == 1) {
+  if (type == 1 || type == 6) {
     cid = u.recv.chan->Canonical(s);
-  } else if (type == 2 || type == 4) {
+  } else if (type == 2 || type == 4 || type == 5) {
     cid = id->Canonical(s);
   }
   
-  if (type == 1) {
+  if (type == 1 || type == 6) {
     u.recv.chan->sPrint(tmp,1024);
-  } else if (type == 2 || type == 4) {
+  } else if (type == 2 || type == 4 || type == 5) {
     id->sPrint(tmp,1024);
   }
   str += tmp;
-  if (scope->IsPort(cid) == 0) {
+  if (scope->IsPort(cid) == 0 && func == 0) {
     str += "_valid ";
+  } else if (scope->IsPort(cid) == 0 && func == 1) {
+    str += "_ready ";
   } else if (scope->IsPort(cid) == 1) {
     str += "_valid ";
   } else if (scope->IsPort(cid) == 2) {
@@ -856,9 +880,9 @@ void Data::PrintVerilogHSlhs(std::string &str) {
 
 void Data::PrintVerilogHSrhs(std::string &str){
 
-  if (type == 1) {
+  if (type == 1 || type == 6) {
     u.recv.up_cond->PrintVerilogDeclRaw(str);
-  } else if (type == 2) {
+  } else if (type == 2 || type == 5) {
     u.send.up_cond->PrintVerilogDeclRaw(str);
   }
 
@@ -870,13 +894,40 @@ void StateMachine::PrintVerilogDataHS()
   std::string hs;
 
   for (auto id : hs_data) {
-    if (id.second[0]->GetType() == 4) {
-      hs += "always @(posedge clock)\nif (reset)\n\t\\";
-      id.second[0]->PrintVerilogHSlhs(hs);
-      hs += " <= 0";
+    if (id.second[0]->GetType() == 5 || id.second[0]->GetType() == 6) {
+      int func = id.second[0]->GetType() == 5 ? 0 : 1;
+      for (auto i = 0; i < 2; i++) {
+        hs += "always @(posedge clock)\nif (reset) begin\n\t\\";
+        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += " <= 0 ;\n";
+        hs += "end else if (\\";
+        id.second[0]->PrintVerilogHSlhs(hs, 0);
+        hs += "& \\";
+        id.second[0]->PrintVerilogHSlhs(hs, 1);
+        hs += ") begin\n\t\\";
+        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += " <= 0 ;\n";
+        for (auto dd : id.second) {
+          if (func == 1 && dd->GetType() == 5 || 
+              func == 0 && dd->GetType() == 6) {
+            continue;
+          }
+          hs += "end else if (";
+          dd->PrintVerilogHSrhs(hs);
+          hs += ") begin\n\t\\";
+          id.second[0]->PrintVerilogHSlhs(hs, func);
+          hs += " <= 1'b1 ;\n";
+        }
+        hs += "end else begin\n\t\\";
+        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += " <= \\";
+        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += " ;\nend\n\n";
+        func = id.second[0]->GetType() == 5 ? 1 : 0;
+      }
     } else {
-      hs += "always @(*)\n\t\\";
-      id.second[0]->PrintVerilogHSlhs(hs);
+      hs += "always @(*) begin\n\t\\";
+      id.second[0]->PrintVerilogHSlhs(hs, 0);
       hs += " <= (";
       for (auto dd : id.second) {
         if (dd->GetType() == 1 || dd->GetType() == 2) {
@@ -884,9 +935,8 @@ void StateMachine::PrintVerilogDataHS()
           if (dd != id.second[id.second.size()-1]) { hs += " | "; }
         }
       }
-      hs += " ) & ~reset ";
+      hs += " ) & ~reset ;\nend\n\n ";
     }
-    hs += ";\n\n";
     fprintf(output_file, "%s", hs.c_str());
     hs.clear();
   }
