@@ -121,7 +121,11 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       BigInt *bi;
       if (e->u.ival.v_extra) {
         bi = (BigInt*)e->u.ival.v_extra;
-        str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
+        if (bi->getWidth() == 0) {
+          str = str + "{0{1'b0}}";
+        } else {
+          str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
+        }
       } else {
         str = str + "64'd" + std::to_string(e->u.ival.v);
       }
