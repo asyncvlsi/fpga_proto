@@ -1080,7 +1080,7 @@ void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
   for (auto n = hd; n; n = n->GetNext()) {
     std::string mod_name;
     get_module_name(n->GetProc(),mod_name);
-    std::string mod_path = path + "/" + mod_name;
+    std::string mod_path = path + "/" + mod_name + ".v";
     output_file = fopen(mod_path.c_str(),"w");
     if (!n->GetPar()) {
       n->PrintVerilogHeader(sv);
