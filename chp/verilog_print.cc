@@ -518,7 +518,7 @@ void Variable::PrintVerilog() {
     init = init + "\t\t\\" + tmp + " ";
     for (auto i = 1; i < dim.size(); i++) { init = init+"[\\" + tmp + std::to_string(i) + " ]"; }
     init += " <= 0;";
-    for (auto i = 1; i < dim.size(); i++) { init += "\tend\n"; }
+    for (auto i = 1; i < dim.size(); i++) { init += "\t\nend\n"; }
     init += "end\n\n";
   }
 
