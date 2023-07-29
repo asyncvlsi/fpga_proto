@@ -1073,16 +1073,20 @@ void StateMachine::PrintVerilog() {
   return; 
 }
 
-void CHPProject::PrintVerilog(Act *a, int sv, FILE *fout) {
+void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
 
   ActPass *apb = a->pass_find("booleanize");
   BOOL = dynamic_cast<ActBooleanizePass *>(apb);
-  output_file = fout;
   for (auto n = hd; n; n = n->GetNext()) {
+    std::string mod_name;
+    get_module_name(n->GetProc(),mod_name);
+    std::string mod_path = path + "/" + mod_name;
+    output_file = fopen(mod_path.c_str(),"w");
     if (!n->GetPar()) {
       n->PrintVerilogHeader(sv);
     }
     n->PrintVerilog();
+    fclose(output_file);
   }
 
   return;  

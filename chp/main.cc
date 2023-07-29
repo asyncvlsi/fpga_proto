@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <filesystem>
 #include <act/act.h>
 #include <act/passes/booleanize.h>
 #include <act/passes/finline.h>
@@ -34,9 +35,8 @@ void usage () {
   fprintf(stdout, "h - Usage guide\n");
   fprintf(stdout, "a - Add arbiter to the print out (only needed for non-det selection)\n");
   fprintf(stdout, "s - System Verilog state machine style\n");
-  fprintf(stdout, "o - Output file\n");
+  fprintf(stdout, "o - Relative output path (default current directory)\n");
   fprintf(stdout, "O<0,1,2,3> - Ooptimization\n");
-  fprintf(stdout, "b - Bypass optimization\n");
   fprintf(stdout, "c - Config file input\n");
   fprintf(stdout, "=============================================================================================\n");
 }
@@ -48,8 +48,8 @@ int main (int argc, char **argv) {
 
   Act::Init(&argc, &argv);
 
-  FILE *fout  = stdout;
   char *conf = NULL;
+  std::string out_path = std::filesystem::current_path();
 
   int key = 0;
 
@@ -59,14 +59,19 @@ int main (int argc, char **argv) {
   int parb = 0;
   int sv = 0;
   int opt = 0;
-
   while ((key = getopt (argc, argv, "p:asho:c:O:")) != -1) {
     switch (key) {
       case 'o':
         if (optarg == NULL) {
-          fout = stdout;
+          printf("ERROR: MISSING OUTPUT FOLDER NAME\n");
+          exit(1);
         } else {
-          fout  = fopen(optarg, "w");
+          if (std::filesystem::is_directory(optarg)) {
+            out_path = std::string(std::filesystem::current_path()) + "/" + optarg;
+          } else {
+            printf("ERROR: FOLDER DOES NOT EXIST\n");
+            exit(1);
+          }
         }
         break;
       case 'h':
@@ -142,11 +147,17 @@ int main (int argc, char **argv) {
   cp = fpga::build_machine(a,p,opt);
   
   if (parb == 1) {
+    FILE *arb_file;
+    std::string arb_path = std::string(out_path) + "/arbiter.v";
+    arb_file = fopen(arb_path.c_str(), "w");
 	  fpga::Arbiter *arb = new fpga::Arbiter();
-	  arb->PrintArbiter(fout);
+	  arb->PrintArbiter(arb_file);
+    fclose(arb_file);
   }
   
-  cp->PrintVerilog(a, sv, fout);
+  cp->PrintVerilog(a, sv, out_path);
+
+  printf("OUTPUT FILES ARE STORE IN THE FOLDER: %s\n", out_path.c_str());
 
   return 0;
 }

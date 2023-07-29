@@ -294,7 +294,7 @@ public:
   void Append(StateMachine *sm);
 
   void PrintPlain();
-  void PrintVerilog(Act *, int , FILE *);
+  void PrintVerilog(Act *, int , std::string&);
 
   StateMachine *Head();
   StateMachine *Next();
