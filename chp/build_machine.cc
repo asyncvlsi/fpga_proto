@@ -1197,7 +1197,7 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   int reg = 1;
 
   for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
-    if (bnl->chpports[i].omit) { continue; }
+    if (bnl->chpports[i].omit == 1) { continue; }
     reg = 1;
     tmp_id = bnl->chpports[i].c->toid();
     tmp_v = tmp_id->rootVx(cs);
