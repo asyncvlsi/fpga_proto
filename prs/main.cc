@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <act/act.h>
-#include <act/graph.h>
 #include <act/passes/booleanize.h>
 #include <act/passes/netlist.h>
 #include <act/passes/cells.h>
 
+#include "graph.h"
 #include "debug.h"
 
 void logo () {
