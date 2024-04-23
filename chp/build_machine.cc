@@ -220,11 +220,13 @@ Condition *process_recv (
   //Terminate condition is when recv machine is in
   //the exit state
   Condition *term_cond;
-  if (opt >= 2) {
-    term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
-  } else {
+  //if (opt >= 2 && par_chp != ACT_CHP_ASSIGN &&
+  //                par_chp != ACT_CHP_SEND &&
+  //                par_chp != ACT_CHP_RECV) {
+  //  term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
+  //} else {
     term_cond = new_one_cond_comma(1, exit_s_cond, sm);
-  }
+  //}
 
   return term_cond;
 
@@ -311,11 +313,13 @@ Condition *process_send (
   //Terminate condition is when send machine is in
   //the exit state 
   Condition *term_cond;
-  if (opt >= 2) {
-    term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
-  } else {
+  //if (opt >= 2 && par_chp != ACT_CHP_ASSIGN &&
+  //                par_chp != ACT_CHP_SEND &&
+  //                par_chp != ACT_CHP_RECV) {
+  //  term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
+  //} else {
     term_cond = new_one_cond_comma(1, exit_s_cond, sm);
-  }
+  //}
 
   return term_cond;
 
@@ -1380,6 +1384,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
   phash_iter_init(bnl->cH, &hi);
   while (hb = phash_iter_next(bnl->cH, &hi)) {
     act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
+if (bv->isglobal == 1) { continue; }
     is_port = bv->ischpport;
     id = bv->id->toid()->Canonical(cs);
     vx = id->toid()->rootVx(cs);
@@ -1409,27 +1414,6 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     var = new Variable(type, chan, port, dyn, vx, id);
     var->AddDimension(bv->width-1);
     tsm->AddVar(var);
-    ///  
-    //if (bv->isint == 1 && bv->ischpport == 0) { type = 0; }
-    //if (bv->isint == 1 && bv->ischpport == 1) { type = 1; }
-    //else if (bv->ischpport == 1) { type = 0; }
-    //else if (bv->input == 1 && bv->output == 1) {
-    //  if (tsm->GetInstPorts()[id].size() > 1) {
-    //    type = 2;
-    //  } else if (tsm->GetInstPorts()[id].size() == 1 && tsm->GetInstPorts()[id][0]->GetDir() == 0) { 
-    //    type = 1; 
-    //  } else {
-    //    type = 0;
-    //  }
-    //}
-    //chan = bv->ischan;
-    //port = bv->ischpport;
-    //dyn = 0;
-    //
-    //var = new Variable(type, chan, port, dyn, vx, id);
-    //
-    //var->AddDimension(bv->width-1);
-    //tsm->AddVar(var);
   }
 
   //Dynamic is always register
