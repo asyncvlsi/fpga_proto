@@ -1,5 +1,5 @@
 #include <vector>
-#include <act/state_machine.h>
+#include "state_machine.h"
 
 namespace fpga {
 
@@ -9,6 +9,10 @@ namespace fpga {
 
 StateMachine *CHPProject::Head() {
   return hd;
+}
+
+StateMachine *CHPProject::GHead() {
+  return ghd;
 }
 
 void CHPProject::Append(StateMachine *sm) {
@@ -22,10 +26,23 @@ void CHPProject::Append(StateMachine *sm) {
   }
 }
 
+void CHPProject::AppendGlue(StateMachine *sm) {
+  if (ghd) {
+    gtl->SetNext(sm);
+    gtl = sm;
+  } else {
+    ghd = sm;
+    ghd->SetNext(gtl);
+    gtl = sm;
+  }
+}
+
 
 CHPProject::CHPProject() {
   hd = NULL;
   tl = NULL;
+  ghd = NULL;
+  gtl = NULL;
 }
 
 CHPProject::~CHPProject(){
@@ -36,6 +53,13 @@ CHPProject::~CHPProject(){
     delete cur;
     cur = next;
   }
+  cur = ghd;
+  while (cur) {
+    next = cur->GetNext();
+    delete cur;
+    cur = next;
+  }
+
 }
 
 /*
@@ -113,13 +137,16 @@ void StateMachine::AddInst (StateMachineInst *inst_) {
 void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddSib(StateMachine *sm) { ssm.push_back(sm); }
-void StateMachine::AddPort(Port *p_){ ports.push_back(p_); }
+void StateMachine::AddPort(Port *p_){ 
+  ports.push_back(p_); 
+  ports_c.push_back(p_->GetCon());
+}
 void StateMachine::AddVar(Variable *v_){ 
   vars.push_back(v_); 
   vm[v_->GetCon()] = v_;
 }
-void StateMachine::AddData(act_connection* id, Data *dd) {data[id].push_back(dd); }
-void StateMachine::AddHS(act_connection* id, Data *dd) {hs_data[id].push_back(dd);}
+void StateMachine::AddData(act_connection* id, CHPData *dd) {data[id].push_back(dd); }
+void StateMachine::AddHS(act_connection* id, CHPData *dd) {hs_data[id].push_back(dd);}
 void StateMachine::AddCondition(Condition *c) {
   if (c->GetType() == 0) {
     commun_num++;
@@ -165,6 +192,21 @@ void StateMachine::SetFirstState(State *s) {
   size = 1;
 }
 
+int StateMachine::FindPort(act_connection *c) {
+  for (auto i = 0; i < ports_c.size(); i++) {
+    if (ports_c[i] == c) { return i; }
+  }
+  return -1;
+}
+void StateMachine::RemovePort(int i) {
+
+  ports_c.erase(ports_c.begin()+i);
+  ports.erase(ports.begin()+i);
+
+  return;
+}
+
+
 StateMachine::StateMachine() {
   p = NULL;
   size = 0;
@@ -176,6 +218,9 @@ StateMachine::StateMachine() {
   top = NULL;
   next = NULL;
   par = NULL;
+  ch = NULL;
+  glue_dir = 0;
+  prs = 0;
 }
 
 StateMachine::StateMachine(State *s, int n, Process *p_) {
@@ -189,6 +234,9 @@ StateMachine::StateMachine(State *s, int n, Process *p_) {
   top = s;
   next = NULL;
   par = NULL;
+  ch = NULL;
+  glue_dir = 0;
+  prs = 0;
 }
 
 StateMachine::StateMachine(State *s, int n, StateMachine *par_) {
@@ -202,6 +250,9 @@ StateMachine::StateMachine(State *s, int n, StateMachine *par_) {
   top = s;
   next = NULL;
   par = par_;
+  ch = NULL;
+  glue_dir = 0;
+  prs = 0;
 }
 
 StateMachine::~StateMachine() {
@@ -227,13 +278,44 @@ Process *StateMachineInst::GetProc(){
 std::vector<Port *> StateMachineInst::GetPorts(){
   return ports;
 }
+int StateMachineInst::FindPort(act_connection *c) {
+  for (auto i = 0; i < ports_c.size(); i++) {
+    if (ports_c[i] == c) { return i; }
+  }
+  return -1;
+}
+Port *StateMachineInst::RemovePort(int i) {
+
+  ports_c.erase(ports_c.begin()+i);
+  Port *p_ = ports[i];
+  ports.erase(ports.begin()+i);
+
+  return p_;
+}
 
 StateMachineInst::StateMachineInst(){
   p = NULL;
-  name = NULL;
+  u.p.name = NULL;
   array = NULL;
   sm = NULL;
+  glue = 0;
+  ch = 0;
+  prs = 0;
 };
+
+StateMachineInst::StateMachineInst(
+                                  Process *p_,
+                                  ValueIdx *name_,
+                                  char *array_
+                                  ){
+  p = p_;
+  u.p.name = name_;
+  array = array_;
+  sm = NULL;
+  glue = 0;
+  ch = 0;
+  prs = 0;
+}
 
 StateMachineInst::StateMachineInst(
                                   Process *p_,
@@ -242,11 +324,13 @@ StateMachineInst::StateMachineInst(
                                   std::vector<Port *> &ports_
                                   ){
   p = p_;
-  name = name_;
+  u.p.name = name_;
   array = array_;
   ports = ports_;
   sm = NULL;
-
+  glue = 0;
+  ch = 0;
+  prs = 0;
 }
 
 StateMachineInst::~StateMachineInst(){};

@@ -4,7 +4,8 @@
 #include <act/act.h>
 #include <act/passes/booleanize.h>
 #include <act/passes/finline.h>
-#include <act/state_machine.h>
+
+#include "state_machine.h"
 
 void logo () {
 
@@ -12,7 +13,7 @@ fprintf(stdout, "    +  +  +  +  +  +  +  +        +  +  +  +  +  +  +  +       
 fprintf(stdout, "  +-+--+--+--+--+--+--+--+-+    +-+--+--+--+--+--+--+--+-+    +-+--+--+--+--+--+--+--+-+  \n");
 fprintf(stdout, "+-+                        +-++-+                        +-++-+                        +-+\n");
 fprintf(stdout, "  |                        |    |                        |    |                        |  \n");
-fprintf(stdout, "+-+                        +-++-+                        +-++-+                        +-+\n");
+fprintf(stdout, "+-+                        +-++-+      Extended Ver.     +-++-+                        +-+\n");
 fprintf(stdout, "  |                        |    |       CHP -> FPGA      |    |                        |  \n");
 fprintf(stdout, "+-+                        +-++-+     Yale University    +-++-+                        +-+\n");
 fprintf(stdout, "  |                        |    |        AVLSI Lab       |    |                        |  \n");
@@ -33,11 +34,9 @@ void usage () {
   fprintf(stdout, "Usage: chp2fpga [-p <process_name>] <*.act>\n");
   fprintf(stdout, "=============================================================================================\n");
   fprintf(stdout, "h - Usage guide\n");
+  fprintf(stdout, "p - Top process name\n");
   fprintf(stdout, "a - Add arbiter to the print out (only needed for non-det selection)\n");
-  fprintf(stdout, "s - System Verilog state machine style\n");
   fprintf(stdout, "o - Relative output path (default current directory)\n");
-  fprintf(stdout, "O<0,1,2,3> - Ooptimization\n");
-  fprintf(stdout, "c - Config file input\n");
   fprintf(stdout, "=============================================================================================\n");
 }
 
@@ -81,11 +80,6 @@ int main (int argc, char **argv) {
       case 'a':
         parb = 1;
         break;
-      case 's':
-        sv = 1;
-        break;
-      case 'c':
-        break;
       case 'p':
         if (proc) {
           FREE(proc);
@@ -94,12 +88,6 @@ int main (int argc, char **argv) {
           fatal_error ("Missing process name");
         }
         proc = Strdup(optarg);
-        break;
-      case 'O':
-        if (optarg == NULL) {
-          fatal_error ("Missing optimization level");
-        }
-        opt = atoi(optarg);
         break;
       case ':':
         fprintf(stderr, "Need a file here\n");
@@ -144,7 +132,7 @@ int main (int argc, char **argv) {
 
   fpga::CHPProject *cp;
 
-  cp = fpga::build_machine(a,p,opt);
+  cp = fpga::build_machine(a,p,opt,proc);
   
   if (parb == 1) {
     FILE *arb_file;

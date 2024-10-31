@@ -2,14 +2,15 @@ namespace fpga {
 
 class Condition;
 class StateMachine;
+class StateMachineInst;
 
-class Data {
+class CHPData {
 public:
 
-  Data();
-  Data(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, Expr *);
-  Data(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, ActId *);
-  ~Data();
+  CHPData();
+  CHPData(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, Expr *);
+  CHPData(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, ActId *);
+  ~CHPData();
 
   int GetType();
   Condition *GetCond();
@@ -77,6 +78,7 @@ public:
 
   Port();
   Port(int, int, int, int, ValueIdx *, act_connection *);
+  Port(Port *);
   ~Port();
 
   int GetDir();
@@ -91,6 +93,24 @@ public:
   void PrintVerilog();
   void PrintName(std::string &);
 
+  //Extra
+  int GetOwnerType() { return o_type; };
+  StateMachine *GetSM() { return owner.sm; };
+  StateMachineInst *GetSMI() { return owner.smi; };
+  void SetOwner(StateMachine *sm_) { 
+    o_type = 0;
+    owner.sm = sm_; 
+  };
+  void SetOwner(StateMachineInst *smi_) { 
+    o_type = 1;
+    owner.smi = smi_; 
+  };
+  void SetId(ActId *id) { glue_port_name = id; };
+  ActId *GetId() { return glue_port_name; };
+  void FlipDir() { dir = dir == 0 ? 1 : 0; };
+  void PrintAsGlue(std::string &);
+  int GetWidth() { return width; };
+
 private:
 
   int dir;  //0 - output; 1 - input
@@ -102,9 +122,17 @@ private:
   ValueIdx *root_id;
   act_connection *connection;
 
+  //Extra
+  int o_type;
+  union {
+    StateMachine *sm;
+    StateMachineInst *smi;
+  } owner;
+  ActId *glue_port_name;
+
 };
 
-void PrintExpression(Expr *);
+void PrintExpression(Expr *, StateMachine *, std::string &);
 
 class Variable {
 public:
@@ -134,7 +162,7 @@ public:
 
 private:
 
-  int type;   //0 - reg, 1 - wire, 2 - inst-inst wire, 3 - internal buffer
+  int type;   //0 - reg, 1 - wire, 2 - inst-inst wire, 3 - internal buffer, 4/5 - glue
   int ischan; //0 - no, 1 - yes
   int isport; //0 - no, 1 - yes
   int isdyn;  //0 - no, 1 - yes

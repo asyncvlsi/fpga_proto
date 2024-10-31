@@ -1,12 +1,14 @@
 #include <vector>
+#include <set>
 #include <string>
 #include <string.h>
 #include <act/act.h>
+
 #include "data_path.h"
 
 namespace fpga {
 
-class Data;
+class CHPData;
 class Port;
 class Variable;
 class Arbiter;
@@ -146,6 +148,7 @@ class StateMachineInst {
 public:
 
   StateMachineInst();
+  StateMachineInst(Process *, ValueIdx *, char *);
   StateMachineInst(Process *, ValueIdx *, char *, std::vector<Port *>&);
   ~StateMachineInst();
 
@@ -154,21 +157,59 @@ public:
 
   Process *GetProc();
   std::vector<Port *> GetPorts();
+  StateMachine *GetSM() { return sm; };
+  ValueIdx *GetVx() { return u.p.name; };
+
+  void AddPort(Port *p_) { 
+    ports.push_back(p_);
+    ports_c.push_back(p_->GetCon());
+  };
+  int FindPort(act_connection *);
+  Port *RemovePort(int);
 
   void PrintVerilog();
+
+  //Extra
+  void SetGlue() { glue = 1; };
+  int GetGlue() { return glue; };
+  void SetGlueDir(int dir_) { dir = dir_; };
+  void SetChan(InstType *ch_) { ch = ch_; };
+  InstType *GetChan() { return ch; };
+  void PrintAsGlue();
+  void SetSRC(ValueIdx *svx) { u.g.name_src = svx; };
+  void SetDST(ValueIdx *dvx) { u.g.name_dst = dvx; };
+  void SetPrs() { prs = 1; };
+  int GetPrs() { return prs; };
+  int GetDir() { return dir; };
 
 private:
 
   Process *p;
 
-  ValueIdx *name;
+  int glue;
+  
+  int prs;
+
+  union {
+    struct {
+      ValueIdx *name;
+    } p;
+    struct {
+      ValueIdx *name_src;
+      ValueIdx *name_dst;
+    } g;
+  } u;
 
   char *array;
 
   std::vector<Port *> ports;
+  std::vector<act_connection *> ports_c;
 
   StateMachine *sm;
 
+  //Extra
+  InstType *ch;
+  int dir;
 };
 
 //State machine which controls
@@ -189,13 +230,14 @@ public:
   void SetNumber(int n);
   void SetNext(StateMachine *smn);
   void SetParent(StateMachine *psm);
+  void SetPrs() { prs = 1; };
 
   void AddCondition(Condition *c);
   void AddSize();
   void AddKid(StateMachine *sm);
   void AddSib(StateMachine *sm);
-  void AddData(act_connection*, Data *);
-  void AddHS  (act_connection*, Data *);
+  void AddData(act_connection*, CHPData *);
+  void AddHS  (act_connection*, CHPData *);
   void AddPort(Port *);
   void AddVar(Variable *);
   void AddInst(StateMachineInst *);
@@ -210,10 +252,11 @@ public:
   int GetCCN();
   int GetKids();
   int GetSibs();
+  int GetPrs() { return prs; }
   StateMachine *GetPar();
   StateMachine *GetNext();
-  std::map<act_connection*, std::vector<Data *>> GetData() { return data; };
-  std::map<act_connection*, std::vector<Data *>> GetHSData() { return hs_data; };
+  std::map<act_connection*, std::vector<CHPData *>> GetData() { return data; };
+  std::map<act_connection*, std::vector<CHPData *>> GetHSData() { return hs_data; };
   std::vector<Variable *> GetVars();
   inline Variable *GetVarRaw(act_connection *c) { return vm[c]; };
   inline int GetVarType(act_connection *c) { return vm[c]->GetType(); };
@@ -222,6 +265,10 @@ public:
   std::vector<StateMachineInst *> GetInst();
   std::map<act_connection *, std::vector<Port *>> GetInstPorts() { return _ports; };
   inline int GetType() { return top->GetType(); };
+
+  int FindPort(act_connection *);
+  void RemovePort(int);
+  void RemoveInstPortPair(act_connection *c) { _ports.erase(c); }
 
   void PrintParent(StateMachine *, int);
   void PrintScopeVar(StateMachine *, std::string &);
@@ -236,8 +283,17 @@ public:
   void PrintVerilogDataHS();
 
   void Clear();
+  void ClearInst() { inst.clear(); };
 
   StateMachine *Next() { return next; }
+
+  //Extra
+  void PrintAsGlue(std::string&);
+  void SetChan(Channel *ch_) { ch = ch_; };
+  void SetDir(int glue_dir_) { glue_dir = glue_dir_; };
+  Channel *GetChan() { return ch; };
+  int GetDir() { return glue_dir; };
+  void AddGlueData(CHPData *d) { glue_data.push_back(d); };
 
 private:
 
@@ -256,9 +312,10 @@ private:
 
   std::vector<StateMachineInst *> inst;
 
-  std::map<act_connection*, std::vector<Data *>> data;
-  std::map<act_connection*, std::vector<Data *>> hs_data;
+  std::map<act_connection*, std::vector<CHPData *> > data;
+  std::map<act_connection*, std::vector<CHPData *> > hs_data;
 
+  std::vector<act_connection *> ports_c;
   std::vector<Port *> ports;
   std::map<act_connection *, std::vector<Port *>> _ports;  //connection to inst ports mapping
   std::vector<Variable *> vars;
@@ -282,6 +339,13 @@ private:
   StateMachine *next;
   StateMachine *par;
 
+  int prs;
+
+  //Extra
+  Channel *ch;
+  int glue_dir;
+  std::vector<CHPData *> glue_data;
+  void PrintVerilogGlueData();
 };
 
 
@@ -292,6 +356,7 @@ public:
   ~CHPProject();
 
   void Append(StateMachine *sm);
+  void AppendGlue(StateMachine *sm);
 
   void PrintPlain();
   void PrintVerilog(Act *, int , std::string&);
@@ -299,12 +364,22 @@ public:
   StateMachine *Head();
   StateMachine *Next();
 
+  //Extra
+  StateMachine *GHead();
+  StateMachine *GNext();
+  std::map<Type*, std::vector<ActId*> > &GetChan() { return cv; };
+  std::map<Type*, StateMachine*> &GetGlue() { return jm; };
+
 private:
 
   StateMachine *hd, *tl;
+  //Extra
+  StateMachine *ghd, *gtl;
+  std::map<Type*, std::vector<ActId*> > cv;
+  std::map<Type*,StateMachine*> jm;
 
 };
 
-CHPProject *build_machine (Act *, Process *, int);
+CHPProject *build_machine (Act *, Process *, int, char*);
 
 }

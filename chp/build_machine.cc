@@ -1,6 +1,8 @@
-#include <act/state_machine.h>
+#include <algorithm>
 #include <act/passes/booleanize.h>
 #include <act/iter.h>
+
+#include "state_machine.h"
 
 /*
 ACT_CHP_COMMA = 0
@@ -30,15 +32,23 @@ ACT_CHP_NULL = 18
 namespace fpga {
 
 static ActBooleanizePass *BOOL = NULL;
+FILE *prs_list = NULL;
 
-Condition *traverse_chp(Process*,act_chp_lang_t*,StateMachine*,StateMachine*,StateMachine*,Condition*,int,int);
+Condition *traverse_chp(Process*,UserDef*,act_chp_lang_t*,StateMachine*,StateMachine*,StateMachine*,Condition*,int,int);
+static void visit_channel_ports (act_boolean_netlist_t*,Channel*,ActId*,int);
+void get_port_full_id (act_boolean_netlist_t*,InstType*,ActId*,std::vector<ActId*>&);
 
 StateMachine *init_state_machine(StateMachine *sm)
 {
   StateMachine *csm = new StateMachine();
   csm->SetNumber(sm->GetKids());
   csm->SetParent(sm);
-  csm->SetProcess(sm->GetProc());
+  if (sm->GetProc()) {
+    csm->SetProcess(sm->GetProc());
+  } else if (sm->GetChan()) {
+    csm->SetChan(sm->GetChan());
+    csm->SetDir(sm->GetDir());
+  }
 
   return csm;
 }
@@ -132,6 +142,7 @@ Condition *new_two_cond_comma (int type, Condition *cond1, Condition *cond2, Sta
 
 Condition *process_recv (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -141,7 +152,11 @@ Condition *process_recv (
                         int opt
                         ) {
   Scope *scope;
-  scope = proc->CurScope();
+  if (ud) {
+    scope = ud->CurScope();
+  } else {
+    scope = proc->CurScope();
+  }
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   //Recv is a communication statement. It includes two
@@ -159,7 +174,12 @@ Condition *process_recv (
   Condition *zero_s_cond = new_state_cond(s, sm);
 
   //Create handshaking condition
-  ActId *chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
+  ActId *chan_id = NULL;
+  if (!ud) {
+    chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
+  } else {
+    chan_id = chp_lang->u.comm.chan;
+  }
   Condition *hs_compl = new_hs_cond(chan_id, sm);
 
   //Create communication completion condition
@@ -184,28 +204,40 @@ Condition *process_recv (
 
   //Processing channel by finding its direction
   //and bitwidth in the booleanize data structure
-  Data *d = NULL;
-  act_connection *chan_con;
-  chan_con = chan_id->Canonical(scope);
-
-  ActId *var_id = chp_lang->u.comm.var;
-
-  act_connection *var_con = NULL;
-  if (var_id) {
-    if (BOOL->isDynamicRef(bnl, var_id)) {
-      var_con = BOOL->isDynamicRef(bnl, var_id)->id;
-    } else {
-      var_con = var_id->Canonical(scope);
+  if (!ud) {
+    CHPData *d = NULL;
+    act_connection *chan_con;
+    chan_con = chan_id->Canonical(scope);
+  
+    ActId *var_id = chp_lang->u.comm.var;
+  
+    act_connection *var_con = NULL;
+    if (var_id) {
+      if (ud) {
+        var_con = var_id->Canonical(scope);
+      } else {
+        if (BOOL->isDynamicRef(bnl, var_id)) {
+          var_con = BOOL->isDynamicRef(bnl, var_id)->id;
+        } else {
+          var_con = var_id->Canonical(scope);
+        }
+      }
     }
+  
+    int data_type = tsm->GetVarType(chan_con) == 3 ? 6 : 1;
+  
+    d = new CHPData(data_type, 0, 0, proc, tsm, exit_cond,
+                                  init_cond, var_id, chan_id);
+    if (var_id) { tsm->AddData(var_con, d); }
+    tsm->AddHS(chan_con, d);
+  } else {
+    CHPData *d = NULL;
+    ActId *var_id = chp_lang->u.comm.var;
+    int data_type = 1;
+    d = new CHPData(data_type, 0, 0, NULL, tsm, exit_cond,
+                                    init_cond, var_id, chan_id);
+    tsm->AddGlueData(d);
   }
-
-  int data_type = tsm->GetVarType(chan_con) == 3 ? 6 : 1;
-
-  d = new Data(data_type, 0, 0, proc, tsm, exit_cond,
-                                init_cond, var_id, chan_id);
-  if (var_id) { tsm->AddData(var_con, d); }
-  tsm->AddHS(chan_con, d);
-
   //Create return condition when parent
   //machine switches from the current state
   if (pc && par_chp != ACT_CHP_INF_LOOP) {
@@ -220,13 +252,7 @@ Condition *process_recv (
   //Terminate condition is when recv machine is in
   //the exit state
   Condition *term_cond;
-  //if (opt >= 2 && par_chp != ACT_CHP_ASSIGN &&
-  //                par_chp != ACT_CHP_SEND &&
-  //                par_chp != ACT_CHP_RECV) {
-  //  term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
-  //} else {
-    term_cond = new_one_cond_comma(1, exit_s_cond, sm);
-  //}
+  term_cond = new_one_cond_comma(1, exit_s_cond, sm);
 
   return term_cond;
 
@@ -234,6 +260,7 @@ Condition *process_recv (
 
 Condition *process_send (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -243,7 +270,11 @@ Condition *process_send (
                         int opt
                         ) {
   Scope *scope;
-  scope = proc->CurScope();
+  if (ud) {
+    scope = ud->CurScope();
+  } else {
+    scope = proc->CurScope();
+  }
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   //Send is a communication statement. It includes two
@@ -261,7 +292,12 @@ Condition *process_send (
   Condition *zero_s_cond = new_state_cond(s, sm);
 
   //Create handshaking condition
-  ActId *chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
+  ActId *chan_id = NULL;
+  if (!ud) {
+    chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
+  } else {
+    chan_id = chp_lang->u.comm.chan;
+  }
   Condition *hs_compl = new_hs_cond(chan_id, sm);
 
   //Create communication completion condition
@@ -288,19 +324,27 @@ Condition *process_send (
   //and bitwidth in the booleanize data structure
   //as well as declaring all undeclared variables 
   //used in the channel send list
-  Data *d = NULL;
-  act_connection *chan_con;
-  chan_con = chan_id->Canonical(scope);
-
-  Expr *se = chp_lang->u.comm.e;
-
-  int data_type = tsm->GetVarType(chan_con) == 3 ? 5 : 2;
-
-  d = new Data (data_type, 0, 0, proc, tsm, exit_cond,
-                                init_cond, chan_id, se);
-  if (se) { tsm->AddData(chan_con, d); }
-  tsm->AddHS(chan_con, d);
-
+  if (!ud) {
+    CHPData *d = NULL;
+    act_connection *chan_con;
+    chan_con = chan_id->Canonical(scope);
+  
+    Expr *se = chp_lang->u.comm.e;
+  
+    int data_type = tsm->GetVarType(chan_con) == 3 ? 5 : 2;
+  
+    d = new CHPData (data_type, 0, 0, proc, tsm, exit_cond,
+                                  init_cond, chan_id, se);
+    if (se) { tsm->AddData(chan_con, d); }
+    tsm->AddHS(chan_con, d);
+  } else {
+    CHPData *d = NULL;
+    ActId *var_id = chp_lang->u.comm.var;
+    int data_type = 2;
+    d = new CHPData(data_type, 0, 0, NULL, tsm, exit_cond,
+                                    init_cond, chan_id, var_id);
+    tsm->AddGlueData(d);
+  }
   //Create return condition when parent
   //machine switches from the current state
   if (pc && par_chp != ACT_CHP_INF_LOOP) {
@@ -313,20 +357,14 @@ Condition *process_send (
   //Terminate condition is when send machine is in
   //the exit state 
   Condition *term_cond;
-  //if (opt >= 2 && par_chp != ACT_CHP_ASSIGN &&
-  //                par_chp != ACT_CHP_SEND &&
-  //                par_chp != ACT_CHP_RECV) {
-  //  term_cond = new_two_cond_comma(1, commu_compl, exit_s_cond, sm);
-  //} else {
-    term_cond = new_one_cond_comma(1, exit_s_cond, sm);
-  //}
+  term_cond = new_one_cond_comma(1, exit_s_cond, sm);
 
   return term_cond;
-
 }
 
 Condition *process_assign (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -337,7 +375,11 @@ Condition *process_assign (
                         ) {
 
   Scope *scope;
-  scope = proc->CurScope();
+  if (ud) {
+    scope = ud->CurScope();
+  } else {
+    scope = proc->CurScope();
+  }
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   //Assignment is a state machine with two states.
@@ -368,18 +410,22 @@ Condition *process_assign (
   //variables used in the assigned expression. This is 
   //necessary for the declaration section is Verilog
   //module
-  Data *d = NULL;
+  CHPData *d = NULL;
   ActId *var_id = chp_lang->u.assign.id;
   Expr *e = chp_lang->u.assign.e;
 
   act_connection *var_con = NULL;
-  if (BOOL->isDynamicRef(bnl, var_id)) {
-    var_con = BOOL->isDynamicRef(bnl, var_id)->id;
-  } else {
+  if (ud) {
     var_con = var_id->Canonical(scope);
+  } else {
+    if (BOOL->isDynamicRef(bnl, var_id)) {
+      var_con = BOOL->isDynamicRef(bnl, var_id)->id;
+    } else {
+      var_con = var_id->Canonical(scope);
+    }
   }
 
-  d = new Data(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
+  d = new CHPData(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
   tsm->AddData(var_con, d);
 
   //Create termination condition using an exit state condition
@@ -416,6 +462,7 @@ Condition *process_assign (
 
 Condition *process_loop (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -425,8 +472,6 @@ Condition *process_loop (
                         int opt
                         ) {
 
-  Scope *scope;
-  scope = proc->CurScope();
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
   Condition *tmp = NULL;
 
@@ -480,7 +525,7 @@ Condition *process_loop (
       StateMachine *csm;
       csm = init_state_machine(sm);
 
-      tmp = traverse_chp(proc, gg->s, csm, tsm, sm, child_cond, ACT_CHP_LOOP, opt);
+      tmp = traverse_chp(proc, ud, gg->s, csm, tsm, sm, child_cond, ACT_CHP_LOOP, opt);
   
       if (tmp) {
         sm->AddKid(csm);
@@ -524,13 +569,14 @@ Condition *process_loop (
   
     return term_cond;
   } else {
-    return traverse_chp(proc, chp_lang->u.gc->s, sm, tsm, psm, pc, ACT_CHP_INF_LOOP, opt);
+    return traverse_chp(proc, ud, chp_lang->u.gc->s, sm, tsm, psm, pc, ACT_CHP_INF_LOOP, opt);
   }
 
 }
 
 Condition *process_do_loop (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -540,8 +586,6 @@ Condition *process_do_loop (
                         int opt
                         ) {
 
-  Scope *scope;
-  scope = proc->CurScope();
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   //Do loop is a contruction which guarantees at least one execution
@@ -572,7 +616,7 @@ Condition *process_do_loop (
   csm = init_state_machine(sm);
 
   Condition *tmp;
-  tmp = traverse_chp(proc, gg->s, csm, tsm, sm, child_cond, ACT_CHP_DOLOOP, opt);
+  tmp = traverse_chp(proc, ud, gg->s, csm, tsm, sm, child_cond, ACT_CHP_DOLOOP, opt);
 
   vc.clear();
 
@@ -639,6 +683,7 @@ Condition *process_do_loop (
 
 Condition *process_select_nondet (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -647,8 +692,7 @@ Condition *process_select_nondet (
                         int par_chp,
                         int opt
                         ) {
-  Scope *scope;
-  scope = proc->CurScope();
+
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
   Condition *tmp = NULL;
 
@@ -702,7 +746,7 @@ Condition *process_select_nondet (
     //Traverse the rest of the hierarchy
     if (gg->s->type == ACT_CHP_COMMA || 
         gg->s->type == ACT_CHP_SEMI) {
-      tmp = traverse_chp(proc, gg->s, sm, tsm, sm, child_cond, 
+      tmp = traverse_chp(proc, ud, gg->s, sm, tsm, sm, child_cond, 
                                            ACT_CHP_SELECT_NONDET, opt);
       //sm->AddCondition(tmp);
     //If statement is skip of func then use execution state
@@ -716,7 +760,7 @@ Condition *process_select_nondet (
       }
     } else {
       StateMachine *csm = init_state_machine(sm);
-      tmp = traverse_chp(proc, gg->s, csm, tsm, sm, child_cond, 
+      tmp = traverse_chp(proc, ud, gg->s, csm, tsm, sm, child_cond, 
                                             ACT_CHP_SELECT_NONDET, opt);
       if (tmp) {
         sm->AddKid(csm);
@@ -762,6 +806,7 @@ Condition *process_select_nondet (
 
 Condition *process_select (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -770,8 +815,7 @@ Condition *process_select (
                         int par_chp,
                         int opt
                         ) {
-  Scope *scope;
-  scope = proc->CurScope();
+
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
 
   //Selection is a control statement. It waits until a guard
@@ -854,7 +898,7 @@ Condition *process_select (
     if (gg->s) {
       if (gg->s->type == ACT_CHP_COMMA || 
           gg->s->type == ACT_CHP_SEMI) {
-        tmp = traverse_chp(proc, gg->s, sm, tsm, sm, child_cond, ACT_CHP_SELECT, opt);
+        tmp = traverse_chp(proc, ud, gg->s, sm, tsm, sm, child_cond, ACT_CHP_SELECT, opt);
       //If statement is skip or func then use execution state
       //as a termination condition
       } else if (gg->s->type == ACT_CHP_SKIP || 
@@ -866,7 +910,7 @@ Condition *process_select (
         }
       } else {
         StateMachine *csm = init_state_machine(sm);
-        tmp = traverse_chp(proc, gg->s, csm, tsm, sm, child_cond, ACT_CHP_SELECT, opt);
+        tmp = traverse_chp(proc, ud, gg->s, csm, tsm, sm, child_cond, ACT_CHP_SELECT, opt);
         if (tmp) {
           sm->AddKid(csm);
         } else {
@@ -916,6 +960,7 @@ Condition *process_select (
 
 Condition *process_semi (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -924,8 +969,7 @@ Condition *process_semi (
                         int par_chp,
                         int opt
                         ) {
-  Scope *scope;
-  scope = proc->CurScope();
+
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
   Condition *tmp = NULL;
 
@@ -996,11 +1040,11 @@ Condition *process_semi (
       }
 
       if (sm->IsEmpty()) {
-        tmp = traverse_chp(proc, cl, sm, tsm, next_psm, child_cond, ACT_CHP_SEMI, opt);
+        tmp = traverse_chp(proc, ud, cl, sm, tsm, next_psm, child_cond, ACT_CHP_SEMI, opt);
         if (!next_psm) { next_psm = sm; }
       } else {
         StateMachine *csm = init_state_machine(sm);
-        tmp = traverse_chp(proc, cl, csm, tsm, next_psm, child_cond, ACT_CHP_SEMI, opt);
+        tmp = traverse_chp(proc, ud, cl, csm, tsm, next_psm, child_cond, ACT_CHP_SEMI, opt);
         csm->SetNumber(sm->GetKids());
         if (tmp) {
           sm->AddKid(csm);
@@ -1027,9 +1071,7 @@ Condition *process_semi (
   if ((opt >= 2 & par_chp == ACT_CHP_LOOP) | par_chp == ACT_CHP_INF_LOOP) {
     tmp_com->c.push_back(term_cond);
   }
-//  if (!pc) {
-    sm->AddCondition(term_cond);
-//  }
+  sm->AddCondition(term_cond);
 
   return term_cond;
 
@@ -1037,6 +1079,7 @@ Condition *process_semi (
 
 Condition *process_comma (
                         Process *proc, 
+                        UserDef *ud,
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,
                         StateMachine *tsm,
@@ -1045,8 +1088,7 @@ Condition *process_comma (
                         int par_chp,
                         int opt
                         ) {
-  Scope *scope;
-  scope = proc->CurScope();
+
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
   Condition *tmp = NULL;
 
@@ -1085,10 +1127,10 @@ Condition *process_comma (
     //if statement is SEMI then no new sm
     //is needed otherwise create new child sm
     if (sm->IsEmpty()) {
-      tmp = traverse_chp(proc, cl, sm, tsm, sm, child_cond, ACT_CHP_COMMA, opt);
+      tmp = traverse_chp(proc, ud, cl, sm, tsm, sm, child_cond, ACT_CHP_COMMA, opt);
     } else {
       StateMachine *csm = init_state_machine(sm);
-      tmp = traverse_chp(proc, cl, csm, tsm, sm, child_cond, ACT_CHP_COMMA, opt);
+      tmp = traverse_chp(proc, ud, cl, csm, tsm, sm, child_cond, ACT_CHP_COMMA, opt);
       if (tmp) {
         sm->AddKid(csm);
       } else if (cl->type == ACT_CHP_LOOP) { //Loop return NULL only in the INF case
@@ -1123,7 +1165,8 @@ Condition *process_comma (
 //returns condition type to handle cases where return 
 //state might be one of the previously added states.
 //For exmaple, loops or commas.
-Condition *traverse_chp(Process *proc, 
+Condition *traverse_chp(Process *proc,
+                        UserDef *ud, 
                         act_chp_lang_t *chp_lang, 
                         StateMachine *sm,   //current scope machine
                         StateMachine *tsm,  //top scope machine
@@ -1132,42 +1175,40 @@ Condition *traverse_chp(Process *proc,
                         int par_chp,        //parent chp type
                         int opt             //optimization level
                         ) {
-  Scope *scope;
-  scope = proc->CurScope();
+
   act_boolean_netlist_t *bnl = BOOL->getBNL(proc);
   Condition *tmp = NULL;
-
   switch (chp_lang->type) {
   case ACT_CHP_COMMA: {
-    return process_comma(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_comma(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_SEMI: {
-    return process_semi(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_semi(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_SELECT: {
-    return process_select(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_select(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_SELECT_NONDET: {
-    return process_select_nondet(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_select_nondet(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_LOOP: {
-    return process_loop(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_loop(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_DOLOOP: {
-    return process_do_loop(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_do_loop(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_SKIP: {
     return NULL;
     break;
   }
   case ACT_CHP_ASSIGN: {
-    return process_assign(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_assign(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_SEND: {
-    return process_send(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_send(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_RECV: {
-    return process_recv(proc,chp_lang,sm,tsm,psm,pc,par_chp,opt);
+    return process_recv(proc,ud,chp_lang,sm,tsm,psm,pc,par_chp,opt);
   }
   case ACT_CHP_FUNC: {
     fprintf(stdout, "FUNC : not sure I know what to do with this\n");
@@ -1189,8 +1230,37 @@ Condition *traverse_chp(Process *proc,
   return NULL;
 }
 
-//Adding process ports
-void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
+int get_proc_level (Process *p, ActId *id) {
+
+  int lev = -1;
+  
+  if (id) {
+    lev = ActNamespace::Act()->getLevel (id);
+  }
+  if (lev == -1 && p) {
+    lev = ActNamespace::Act()->getLevel (p);
+  }
+  if (lev == -1) {
+    lev = ActNamespace::Act()->getLevel ();
+  }
+  
+  return lev;
+}
+
+act_connection *get_conn_root (act_connection *p) {
+
+  act_connection *ret = p;
+  while (ret->parent) {
+    ret = ret->parent;
+  }
+
+  return ret;  
+}
+
+Port *create_port(act_boolean_netlist_t *bnl, act_connection *c, int input, StateMachine *sm, int func) {
+
+  Scope *cs = bnl->p->CurScope();
+
   ActId *tmp_id;
   ValueIdx *tmp_v;
   act_connection *tmp_c;
@@ -1200,90 +1270,267 @@ void add_ports(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm){
   ihash_bucket *hb;
   int reg = 1;
 
-  for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
-    if (bnl->chpports[i].omit == 1) { continue; }
-    reg = 1;
-    tmp_id = bnl->chpports[i].c->toid();
-    tmp_v = tmp_id->rootVx(cs);
-    tmp_c = tmp_id->Canonical(cs);
-    tmp_d = bnl->chpports[i].input;
+  reg = 1;
+  tmp_id = c->toid();
+  tmp_v = tmp_id->rootVx(cs);
+  tmp_c = tmp_id->Canonical(cs);
+  tmp_d = input;
+  
+  hb = ihash_lookup(bnl->cH, (long)tmp_c);
+  act_booleanized_var_t *bv;
 
-    hb = ihash_lookup(bnl->cH, (long)tmp_c);
-    act_booleanized_var_t *bv;
+  if (hb) {
+    bv = (act_booleanized_var_t *)hb->v;
 
-    if (hb) {
-      bv = (act_booleanized_var_t *)hb->v;
-
+    if (func == 0) {
+      if (bv->usedchp == 0) { return NULL; } 
+//      if (bv->isfragmented == 0) { return NULL; }
       tmp_w = bv->width;
       chan = bv->ischan;
+    } else {
+      if (bv->used == 0) { return NULL; }
+      tmp_w = 1;
+      chan = 0;
     }
-
-    for (auto in : sm->GetInst()){
-      for (auto pp : in->GetPorts()) {
-        if (pp->GetVx() == tmp_v) {
-          reg = 0;
-          break;
-        }
-      }
-    }
-
-    Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
-    sm->AddPort(p);
   }
-  for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
-    tmp_id = bnl->used_globals[i].c->toid();
-    tmp_v = tmp_id->rootVx(cs);
-    tmp_c = tmp_id->Canonical(cs);
-    tmp_d = 1;
-    tmp_w = 1;
-
-    reg = 1;
-    for (auto in : sm->GetInst()){
-      for (auto pp : in->GetPorts()) {
-        if (pp->GetVx() == tmp_v) {
-          reg = 0;
-          break;
-        }
+  
+  for (auto in : sm->GetInst()){
+    for (auto pp : in->GetPorts()) {
+      if (pp->GetVx() == tmp_v) {
+        reg = 0;
+        break;
       }
     }
+  }
+  
+  Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
+  p->SetOwner(sm);
 
-    Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
-    sm->AddPort(p);
+  return p;
+
+}
+
+//Adding process ports
+void add_ports(act_boolean_netlist_t *bnl, StateMachine *sm){
+
+  Scope *cs = bnl->p->CurScope();
+  act_languages *lang = bnl->p->getlang();
+
+  ActId *tmp_id;
+  ValueIdx *tmp_v;
+  act_connection *tmp_c;
+  unsigned int tmp_d = 0;
+  unsigned int tmp_w = 0;
+  unsigned int chan = 0;
+  ihash_bucket *hb;
+  int reg = 1;
+
+  int lev = get_proc_level(bnl->p, NULL);
+  if (lev == ACT_MODEL_CHP && lang->getchp()) {
+    for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
+      if (bnl->chpports[i].omit == 1) { continue; }
+      if (bnl->chpports[i].c->toid()->isFragmented(bnl->cur)) { continue; }
+      act_connection *c = bnl->chpports[i].c;
+      int input = bnl->chpports[i].input;
+      Port *p = create_port(bnl, c, input, sm, 0);
+      if (p) { sm->AddPort(p); }
+    }
+  } else if (lev == ACT_MODEL_PRS && lang->getprs()) {
+    for (int i = 0; i < A_LEN(bnl->ports); i++) {
+      if (bnl->ports[i].omit == 1) { continue; }
+      act_connection *c = bnl->ports[i].c;
+      int input = bnl->ports[i].input;
+      Port *p = create_port(bnl, c, input, sm, 1);
+      if (p) { sm->AddPort(p); }
+    }
+    for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
+      tmp_id = bnl->used_globals[i].c->toid();
+      tmp_v = tmp_id->rootVx(cs);
+      tmp_c = tmp_id->Canonical(cs);
+      tmp_d = 1;
+      tmp_w = 1;
+
+      reg = 1;
+      for (auto in : sm->GetInst()){
+        for (auto pp : in->GetPorts()) {
+          if (pp->GetVx() == tmp_v) {
+            reg = 0;
+            break;
+          }
+        }
+      }
+
+      Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
+      p->SetOwner(sm);
+      sm->AddPort(p);
+    }
+  } else {
+    if (Act::lang_subst) {
+      for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
+        if (bnl->chpports[i].omit == 1) { continue; }
+        if (bnl->chpports[i].c->toid()->isFragmented(bnl->cur)) { continue; }
+        act_connection *c = bnl->chpports[i].c;
+        int input = bnl->chpports[i].input;
+        Port *p = create_port(bnl, c, input, sm, 0);
+        if (p) { sm->AddPort(p); }
+      }
+    }
   }
 
   return;
+
+//  for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
+//    if (bnl->chpports[i].omit == 1) { continue; }
+//    reg = 1;
+//    tmp_id = bnl->chpports[i].c->toid();
+//    tmp_v = tmp_id->rootVx(cs);
+//    tmp_c = tmp_id->Canonical(cs);
+//    tmp_d = bnl->chpports[i].input;
+//
+//    hb = ihash_lookup(bnl->cH, (long)tmp_c);
+//    act_booleanized_var_t *bv;
+//
+//    if (hb) {
+//      bv = (act_booleanized_var_t *)hb->v;
+//
+//      tmp_w = bv->width;
+//      chan = bv->ischan;
+//    }
+//
+//    for (auto in : sm->GetInst()){
+//      for (auto pp : in->GetPorts()) {
+//        if (pp->GetVx() == tmp_v) {
+//          reg = 0;
+//          break;
+//        }
+//      }
+//    }
+//
+//    Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
+//    sm->AddPort(p);
+//  }
+//  for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
+//    tmp_id = bnl->used_globals[i].c->toid();
+//    tmp_v = tmp_id->rootVx(cs);
+//    tmp_c = tmp_id->Canonical(cs);
+//    tmp_d = 1;
+//    tmp_w = 1;
+//
+//    reg = 1;
+//    for (auto in : sm->GetInst()){
+//      for (auto pp : in->GetPorts()) {
+//        if (pp->GetVx() == tmp_v) {
+//          reg = 0;
+//          break;
+//        }
+//      }
+//    }
+//
+//    Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
+//    sm->AddPort(p);
+//  }
+//
+//  return;
 }
 
 //Map machine instances to their origins
 void map_instances(CHPProject *cp){
+  int found = 0;
   for (auto pr0 = cp->Head(); pr0; pr0 = pr0->GetNext()) {
     for (auto inst : pr0->GetInst()) {
-      for (auto pr1 = cp->Head(); pr1; pr1 = pr1->GetNext()) {
-        if (inst->GetProc() == pr1->GetProc()) {
-          inst->SetSM(pr1);
+      if (inst->GetGlue() == 0) {
+        for (auto pr1 = cp->Head(); pr1; pr1 = pr1->GetNext()) {
+          if (inst->GetProc() == pr1->GetProc()) {
+            inst->SetSM(pr1);
+          }
+        }
+      } else {
+        for (auto gp = cp->GHead(); gp; gp = gp->Next()) {
+          const char *tmp1, *tmp2;
+          tmp1 = gp->GetChan()->getName();
+          tmp2 = inst->GetChan()->BaseType()->getName();
+          if (strcmp(tmp1,tmp2) == 0 && gp->GetDir() == inst->GetDir()) {
+            inst->SetSM(gp);
+          }
         }
       }
     }
   }
+  return;
+}
+
+Port *create_inst_port(act_boolean_netlist_t *bnl, act_connection *c, int input, int func) {
+
+  Scope *cs = bnl->p->CurScope();
+
+  ActId *tmp_id;
+  ValueIdx *tmp_v;
+  act_connection *tmp_c;
+  unsigned int tmp_d = 0;
+  unsigned int tmp_w = 0;
+  unsigned int chan = 0;
+  ihash_bucket *hb;
+
+  tmp_id = c->toid();
+  tmp_v = tmp_id->rootVx(cs);
+  tmp_c = c;
+  tmp_d = input;
+
+  hb = ihash_lookup(bnl->cH, (long)tmp_c);
+  act_booleanized_var_t *bv;
+  
+  if (hb) {
+    bv = (act_booleanized_var_t *)hb->v;
+
+    if (func == 0) {
+      if (bv->used == 0 && bv->usedchp == 0) { return NULL; }
+      tmp_w = bv->width;
+      chan = bv->ischan;
+    } else {
+      if (bv->used == 0) { return NULL; }
+      tmp_w = 1;
+      chan = 0;
+    }
+  }
+ 
+  Port *p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_c);
+  p->SetInst();
+
+  return p;
 }
 
 //Adding all instances in the current process
-void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm) {
+void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm) {
+
+  Scope *cs = bnl->p->CurScope();
 
   ActUniqProcInstiter i(cs);
   
   StateMachineInst *smi;
 
-  int iport = 0;
+  int icport = 0;
+  int ipport = 0;
 
+  Port *tp = NULL;
+  std::map<act_connection*, std::set<StateMachineInst*> > owners;
+
+  InstType *it;
+
+  ActId *inst_id = NULL;
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
-    if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
+    Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+    if (BOOL->getBNL(p)->isempty) {
       continue;
     }
 
+    inst_id = new ActId(vx->getName());
+
+    act_languages *lang = p->getlang();  
     act_boolean_netlist_t *sub;
-    sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
+    sub = BOOL->getBNL (p);
+
+    int lev = get_proc_level(p,inst_id);
 
     int ports_exist = 0;
     for (int j = 0; j < A_LEN(sub->chpports); j++) {
@@ -1297,69 +1544,300 @@ void add_instances(Scope *cs, act_boolean_netlist_t *bnl, StateMachine *sm) {
         Arraystep *as = vx->t->arrayInfo()->stepper();
         while (!as->isend()) {
           if (vx->isPrimary (as->index())) {
-            Process *p = dynamic_cast<Process *>(vx->t->BaseType());
             char *ar = as->string();
-            std::vector<Port *> ports;
-            for (auto j = 0; j < A_LEN(sub->chpports); j++){
-              if (sub->chpports[j].omit == 1) { continue; }
-              act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-              ValueIdx *vv = c->toid()->rootVx(cs);
-
-              ihash_bucket *hb;
-              hb = ihash_lookup(bnl->cH, (long)c);
-              act_booleanized_var_t *bv;
-              bv = (act_booleanized_var_t *)hb->v;
-              if (bv->used == 0 && bv->usedchp == 0) { continue; } 
-
-              int dir = sub->chpports[j].input;
-              int width = bv->width;
-              int ischan = bv->ischan;
-
-              Port *ip = new Port(dir,width,ischan,0,vv, c);
-              ip->SetInst();
-              ports.push_back(ip);
-              iport++;
-              sm->AddInstPortPair(c,ip);
+            smi = new StateMachineInst(p,vx,ar);
+            if (lev == ACT_MODEL_CHP && lang->getchp()) {
+              for (auto j = 0; j < A_LEN(sub->chpports); j++){
+                if (sub->chpports[j].omit == 1) { continue; }
+                if (sub->chpports[j].c->toid()->isFragmented(sub->cur)) { 
+                  icport++;
+                  continue; 
+                }
+                act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
+                Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+                icport++;
+                if (ip) {
+                  ip->SetOwner(smi);
+                  smi->AddPort(ip);
+                  sm->AddInstPortPair(c,ip);
+                  owners[c].insert(smi);
+                }
+              }
+              for (auto j = 0; j < A_LEN(sub->ports); j++) {
+                if (sub->ports[j].omit == 1) { continue; }
+                ipport++;
+              }
+            } else if (lev == ACT_MODEL_PRS && lang->getprs()) {
+              smi->SetPrs();
+              for (auto j = 0; j < A_LEN(sub->chpports); j++) {
+                if (sub->chpports[j].omit == 1) { continue; }
+                icport++;
+              }
+              for (auto j = 0; j < A_LEN(sub->ports); j++) {
+                if (sub->ports[j].omit == 1) { continue; }
+                act_connection *c = bnl->instports[ipport]->toid()->Canonical(cs);
+                act_connection *tmp = bnl->instports[ipport];
+                Port *ip = create_inst_port(bnl,c,sub->ports[j].input,1);
+                ipport++;
+                if (ip) {
+                  ip->SetOwner(smi);
+                  smi->AddPort(ip);
+                  sm->AddInstPortPair(c,ip);
+                  while (c->parent) {
+                    owners[c].insert(smi);
+                    c = c->parent;
+                  }
+                }
+              }
+            } else {
+              if (Act::lang_subst) {
+                for (auto j = 0; j < A_LEN(sub->chpports); j++){
+                  if (sub->chpports[j].omit == 1) { continue; }
+                  if (sub->chpports[j].c->toid()->isFragmented(sub->cur)) { 
+                    icport++;
+                    continue; 
+                  }
+                  act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
+                  Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+                  icport++;
+                  if (ip) {
+                    ip->SetOwner(smi);
+                    smi->AddPort(ip);
+                    sm->AddInstPortPair(c,ip);
+                    owners[c].insert(smi);
+                  }
+                }
+                for (auto j = 0; j < A_LEN(sub->ports); j++) {
+                  if (sub->ports[j].omit == 1) { continue; }
+                  ipport++;
+                }
+              } else {
+                printf("NO WAY\n");
+              }
             }
-            smi = new StateMachineInst(p,vx,ar,ports);
             sm->AddInst(smi);
           }
           as->step();
         }
       } else {
-        Process *p = dynamic_cast<Process *>(vx->t->BaseType());
         char *ar = NULL;
-        std::vector<Port *> ports;
-        for (auto j = 0; j < A_LEN(sub->chpports); j++){
-          if (sub->chpports[j].omit == 1) { continue; }
-          act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-          ValueIdx *vv = c->toid()->rootVx(cs);
-          
-          ihash_bucket *hb;
-          hb = ihash_lookup(bnl->cH, (long)c);
-          act_booleanized_var_t *bv;
-          bv = (act_booleanized_var_t *)hb->v;
-          if (bv->used == 0 && bv->usedchp == 0) { continue; } 
-          
-          int dir = sub->chpports[j].input;
-          int width = bv->width;
-          int ischan = bv->ischan;
-          
-          Port *ip = new Port(dir,width,ischan,0,vv,c);
-          ip->SetInst();
-          ports.push_back(ip);
-          iport++;
-          sm->AddInstPortPair(c,ip);
+        smi = new StateMachineInst(p,vx,ar);
+        if (lev == ACT_MODEL_CHP && lang->getchp()) {
+          for (auto j = 0; j < A_LEN(sub->chpports); j++){
+            if (sub->chpports[j].omit == 1) { continue; }
+            if (sub->chpports[j].c->toid()->isFragmented(sub->cur)) { 
+              icport++;
+              continue; 
+            }
+            act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
+            Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+            icport++;
+            if (ip) {
+              ip->SetOwner(smi);
+              smi->AddPort(ip);
+              sm->AddInstPortPair(c,ip);
+              owners[c].insert(smi);
+            }
+          }
+          for (auto j = 0; j < A_LEN(sub->ports); j++) {
+            if (sub->ports[j].omit == 1) { continue; }
+            ipport++;
+          }
+        } else if (lev == ACT_MODEL_PRS && lang->getprs()) {
+          smi->SetPrs();
+          for (auto j = 0; j < A_LEN(sub->chpports); j++) {
+            if (sub->chpports[j].omit == 1) { continue; }
+            icport++;
+          }
+          for (auto j = 0; j < A_LEN(sub->ports); j++) {
+            if (sub->ports[j].omit == 1) { continue; }
+            act_connection *c = bnl->instports[ipport]->toid()->Canonical(cs);
+            act_connection *tmp = bnl->instports[ipport];
+            Port *ip = create_inst_port(bnl,c,sub->ports[j].input,1);
+            ipport++;
+            if (ip) {
+              ip->SetOwner(smi);
+              smi->AddPort(ip);
+              sm->AddInstPortPair(c,ip);
+              while (c->parent) {
+                owners[c].insert(smi);
+                c = c->parent;
+              }
+            }
+          }
+        } else {
+          if (Act::lang_subst) {
+            for (auto j = 0; j < A_LEN(sub->chpports); j++){
+              if (sub->chpports[j].omit == 1) { continue; }
+              if (sub->chpports[j].c->toid()->isFragmented(sub->cur)) { 
+                icport++;
+                continue; 
+              }
+              act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
+              Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+              icport++;
+              if (ip) {
+                ip->SetOwner(smi);
+                smi->AddPort(ip);
+                sm->AddInstPortPair(c,ip);
+                owners[c].insert(smi);
+              }
+            }
+            for (auto j = 0; j < A_LEN(sub->ports); j++) {
+              if (sub->ports[j].omit == 1) { continue; }
+              ipport++;
+            }
+          } else {
+            printf("NO WAY\n");
+          }
         }
-        smi = new StateMachineInst(p,vx,ar,ports);
         sm->AddInst(smi);
       }
     }
   }
 
-  return;
+  for (auto pp : owners) {
+    int src_id = 0;
+    int dst_id = 0;
 
+    if (pp.second.size() < 2) { continue; }
+    act_connection *oc = pp.first;
+    auto tmp1 = pp.second.begin();
+    auto tmp2 = next(tmp1,1);
+    if ((*tmp1)->GetPrs() == (*tmp2)->GetPrs()) { continue; }
+    src_id = (*tmp1)->FindPort(pp.first);
+    dst_id = (*tmp2)->FindPort(pp.first);
+    Port *tp;
+    if (src_id == -1) { tp = (*tmp2)->GetPorts()[dst_id]; } 
+    if (dst_id == -1) { tp = (*tmp1)->GetPorts()[src_id]; }
+    sm->AddInstPortPair(oc,tp);
+    if (tp->GetDir() == 0) {
+      src_id = 0;
+      dst_id = 1;
+    } else {
+      src_id = 1;
+      dst_id = 0;
+    }
+    StateMachineInst *gsmi = new StateMachineInst();
+    gsmi->SetGlue();
+    gsmi->SetSRC((*tmp1)->GetVx());
+    gsmi->SetDST((*tmp2)->GetVx());
+
+    gsmi->SetGlueDir(src_id);
+ 
+    it = bnl->cur->FullLookup (pp.first->toid(), NULL);
+    if (TypeFactory::isUserType(it->BaseType()) && 
+        TypeFactory::isChanType(it->BaseType())) {
+      gsmi->SetChan(it);
+    } else {
+      continue;
+    }
+ 
+    Port *gp;
+    gp = new Port(tp);
+    gp->SetOwner(gsmi);
+    gp->FlipDir();
+    gsmi->AddPort(gp);
+    
+    sm->AddInst(gsmi);
+  }
+
+  return;
 }
+//void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm) {
+//
+//  Scope *cs = bnl->p->CurScope();
+//
+//  ActUniqProcInstiter i(cs);
+//  
+//  StateMachineInst *smi;
+//
+//  int iport = 0;
+//
+//  for (i = i.begin(); i != i.end(); i++) {
+//    ValueIdx *vx = *i;
+//    if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
+//      continue;
+//    }
+//
+//    act_boolean_netlist_t *sub;
+//    sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
+//
+//    int ports_exist = 0;
+//    for (int j = 0; j < A_LEN(sub->chpports); j++) {
+//      if (sub->chpports[j].omit == 0) {
+//        ports_exist = 1;
+//        break;
+//      }
+//    }
+//    if (ports_exist == 1) {
+//      if (vx->t->arrayInfo()) {
+//        Arraystep *as = vx->t->arrayInfo()->stepper();
+//        while (!as->isend()) {
+//          if (vx->isPrimary (as->index())) {
+//            Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+//            char *ar = as->string();
+//            std::vector<Port *> ports;
+//            for (auto j = 0; j < A_LEN(sub->chpports); j++){
+//              if (sub->chpports[j].omit == 1) { continue; }
+//              act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+//              ValueIdx *vv = c->toid()->rootVx(cs);
+//
+//              ihash_bucket *hb;
+//              hb = ihash_lookup(bnl->cH, (long)c);
+//              act_booleanized_var_t *bv;
+//              bv = (act_booleanized_var_t *)hb->v;
+//              if (bv->used == 0 && bv->usedchp == 0) { continue; } 
+//
+//              int dir = sub->chpports[j].input;
+//              int width = bv->width;
+//              int ischan = bv->ischan;
+//
+//              Port *ip = new Port(dir,width,ischan,0,vv, c);
+//              ip->SetInst();
+//              ports.push_back(ip);
+//              iport++;
+//              sm->AddInstPortPair(c,ip);
+//            }
+//            smi = new StateMachineInst(p,vx,ar,ports);
+//            sm->AddInst(smi);
+//          }
+//          as->step();
+//        }
+//      } else {
+//        Process *p = dynamic_cast<Process *>(vx->t->BaseType());
+//        char *ar = NULL;
+//        std::vector<Port *> ports;
+//        for (auto j = 0; j < A_LEN(sub->chpports); j++){
+//          if (sub->chpports[j].omit == 1) { continue; }
+//          act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
+//          ValueIdx *vv = c->toid()->rootVx(cs);
+//          
+//          ihash_bucket *hb;
+//          hb = ihash_lookup(bnl->cH, (long)c);
+//          act_booleanized_var_t *bv;
+//          bv = (act_booleanized_var_t *)hb->v;
+//          if (bv->used == 0 && bv->usedchp == 0) { continue; } 
+//          
+//          int dir = sub->chpports[j].input;
+//          int width = bv->width;
+//          int ischan = bv->ischan;
+//          
+//          Port *ip = new Port(dir,width,ischan,0,vv,c);
+//          ip->SetInst();
+//          ports.push_back(ip);
+//          iport++;
+//          sm->AddInstPortPair(c,ip);
+//        }
+//        smi = new StateMachineInst(p,vx,ar,ports);
+//        sm->AddInst(smi);
+//      }
+//    }
+//  }
+//
+//  return;
+//
+//}
 
 void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
 {
@@ -1384,7 +1862,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
   phash_iter_init(bnl->cH, &hi);
   while (hb = phash_iter_next(bnl->cH, &hi)) {
     act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
-if (bv->isglobal == 1) { continue; }
+//    if (bv->isglobal == 1) { continue; }
     is_port = bv->ischpport;
     id = bv->id->toid()->Canonical(cs);
     vx = id->toid()->rootVx(cs);
@@ -1408,8 +1886,15 @@ if (bv->isglobal == 1) { continue; }
         else { type = 0; }
       }
     }
+    else if (bv->isint == 0 & bv->ischan == 0) {
+      type = 1;
+    }
     chan = bv->ischan;
-    port = bv->ischpport;
+    if (bv->isglobal == 1) {
+      port = 1;
+    } else {
+      port = bv->ischpport;
+    }
     dyn = 0;
     var = new Variable(type, chan, port, dyn, vx, id);
     var->AddDimension(bv->width-1);
@@ -1468,7 +1953,7 @@ void init_unused_ports (StateMachine *tsm)
       }
     }
     if (used == 0 && p->GetChan()) {
-      Data *d = new Data(4, 0, 0, tsm->GetProc(), tsm, NULL, NULL, p->GetCon()->toid(), p->GetCon()->toid());
+      CHPData *d = new CHPData(4, 0, 0, tsm->GetProc(), tsm, NULL, NULL, p->GetCon()->toid(), p->GetCon()->toid());
       tsm->AddHS(p->GetCon(), d);
     }
     used = 0;
@@ -1477,10 +1962,293 @@ void init_unused_ports (StateMachine *tsm)
   return;
 }
 
+void visit_user_t(act_boolean_netlist_t *bnl, UserDef *ud, ActId *id,
+                    std::vector<ActId *> &ports) {
+
+  ActId *tl = id;
+  while (tl->Rest()) {
+    tl = tl->Rest();
+  }
+
+  for (auto i = 0; i < ud->getNumPorts(); i++) {
+    ActId *port_id = new ActId(ud->getPortName(i));
+    InstType *pit = ud->getPortType(i);
+    tl->Append(port_id);
+    get_port_full_id(bnl,pit,id,ports);
+    tl->prune();
+    delete port_id;
+  }
+  return;
+};
+
+void get_port_full_id (act_boolean_netlist_t *bnl, InstType *it, ActId *id,
+                        std::vector<ActId *> &ports) {
+
+  ActId *tl = id;
+  while (tl->Rest()) {
+    tl = tl->Rest();
+  }
+
+  if (TypeFactory::isBoolType(it)) {
+    if (it->arrayInfo()) {
+      Arraystep *as = it->arrayInfo()->stepper();
+      while (!as->isend()) {
+        Array *a = as->toArray();
+        tl->setArray(a);
+        ports.push_back(id->Clone());
+        tl->setArray(NULL);
+        delete a;
+        as->step();
+      }
+      delete as;
+    } else {
+      ports.push_back(id->Clone());
+    }
+  }
+  if (TypeFactory::isUserType(it)) {
+    UserDef *ud = dynamic_cast<UserDef *>(it->BaseType());
+    if (it->arrayInfo()) {
+      Arraystep *as = it->arrayInfo()->stepper();
+      while (!as->isend()) {
+        Array *a = as->toArray();
+        tl->setArray(a);
+        visit_user_t(bnl, ud, id, ports);
+        tl->setArray(NULL);
+        delete a;
+        as->step();
+      }
+      delete as;
+    } else {
+      visit_user_t(bnl, ud, id, ports);
+    }
+  }
+
+  return;
+}
+
+void extract_vars (Channel *ch, act_chp_lang_t *e, std::vector<act_connection *> &vars) {
+
+  if (e->type == ACT_CHP_ASSIGN) {
+    act_connection *id = e->u.assign.id->Canonical(ch->CurScope());
+    if (std::find(vars.begin(), vars.end(), id) == vars.end()) { 
+      vars.push_back(id);
+    }
+  } else if (e->type == ACT_CHP_COMMA | e->type == ACT_CHP_SEMI) {
+    list_t *l = NULL;
+    listitem_t *li = NULL;
+    act_chp_lang_t *cl = NULL;
+    l = e->u.semi_comma.cmd;
+    for (li = list_first(l); li; li = list_next(li)) {
+      cl = (act_chp_lang_t *)list_value(li);
+      extract_vars(ch, cl, vars);
+    }
+  } else if (e->type == ACT_CHP_SELECT | e->type == ACT_CHP_SELECT_NONDET |
+              e->type == ACT_CHP_LOOP | e->type == ACT_CHP_DOLOOP) {
+    for (auto gg = e->u.gc; gg; gg = gg->next) {
+      if (gg->s) { extract_vars(ch, gg->s, vars); }
+    }
+  }
+
+  return;
+}
+
+act_chp_lang_t *create_chp_comm (Channel *ch, int dir) {
+  act_chp_lang_t *cl = new act_chp_lang_t;
+
+  ActId *ch_id = new ActId("chan");
+  ActId *var_id = NULL;
+  if (dir == 0) {
+    var_id = new ActId("send_data");
+    cl->type = ACT_CHP_RECV;
+    cl->u.comm.chan = ch_id;
+    cl->u.comm.var = var_id;
+  } else {
+    var_id = new ActId("recv_data");
+    cl->type = ACT_CHP_SEND;
+    cl->u.comm.chan = ch_id;
+    cl->u.comm.var = var_id;
+  }
+  cl->u.comm.e = NULL;
+  cl->u.comm.flavor = 0;
+  cl->u.comm.convert = 0;
+
+  return cl;
+}
+
+act_chp_lang_t *create_chp_loop (act_chp_lang_t *semi) {
+
+  act_chp_gc *gc = new act_chp_gc;
+  gc->id = NULL;
+  gc->lo = NULL; gc->hi = NULL;
+  gc->g = NULL;
+  gc->s = semi;
+  gc->next = NULL;
+
+  act_chp_lang_t *cl = new act_chp_lang_t;
+  cl->type = ACT_CHP_LOOP;
+  cl->u.gc = gc;
+  cl->label = NULL;
+  cl->space = NULL;
+
+  return cl;
+}
+
+act_chp_lang_t *create_chp_semi (list_t *l) {
+
+  act_chp_lang_t *cl = new act_chp_lang_t;
+  cl->type = ACT_CHP_SEMI;
+  cl->u.semi_comma.cmd = l;
+  cl->label = NULL;
+  cl->space = NULL;
+
+  return cl;
+}
+
+Expr *create_channel_probe_expr (Channel *ch) {
+  //l-channel id; r - NULL
+  Expr *pe = new Expr;
+  pe->type = E_PROBE;
+  ActId *ch_id = new ActId("self");
+  pe->u.e.l = (expr*)ch_id;
+
+  return pe;
+}
+
+act_chp_lang_t *create_chp_wait_probe (Channel *ch) {
+
+  Expr *pe = create_channel_probe_expr(ch);
+  act_chp_gc_t *gc = new act_chp_gc_t;
+  gc->id = NULL;
+  gc->lo = NULL;
+  gc->hi = NULL;
+  gc->g = pe;
+  gc->s = NULL;
+  gc->next = NULL;
+
+  act_chp_lang_t *cl = new act_chp_lang_t;
+  cl->type = ACT_CHP_SELECT;
+  cl->label = NULL;
+  cl->space = NULL;
+  cl->u.gc = gc;
+
+  return cl;
+}
+
+//0 send, 1 recv
+//construct aritificial CHP of the following shape;
+//SEND:  INIT; *[[#CHP_RECV]; SET; UP; REST; CHP_RECV ]
+//RECV:  INIT; *[GET; CHP_SEND; UP; REST ]
+act_chp_lang_t *create_channel_chp (Channel *ch, int func) {
+
+  act_chp_lang_t *chan_chp = new act_chp_lang_t;
+
+  list_t *l0 = list_new();
+  if (func == 0) {
+    list_append(l0,create_chp_wait_probe(ch));
+    list_append(l0,ch->getMethod(ACT_METHOD_SET));
+    list_append(l0,ch->getMethod(ACT_METHOD_SEND_UP));
+    list_append(l0,ch->getMethod(ACT_METHOD_SEND_REST));
+    list_append(l0,create_chp_comm (ch, 0));
+  } else {
+    list_append(l0,ch->getMethod(ACT_METHOD_GET));
+    list_append(l0,create_chp_comm (ch, 1));
+    list_append(l0,ch->getMethod(ACT_METHOD_RECV_UP));
+    list_append(l0,ch->getMethod(ACT_METHOD_RECV_REST));
+  }
+  act_chp_lang_t *semi0 = create_chp_semi(l0);
+  act_chp_lang_t *loop = create_chp_loop(semi0);
+  
+  list_t *l1 = list_new();
+  if (func == 0) {
+    list_append(l1,ch->getMethod(ACT_METHOD_SEND_INIT));
+  } else {
+    list_append(l1,ch->getMethod(ACT_METHOD_RECV_INIT));
+  }
+  list_append(l1, loop);
+  chan_chp = create_chp_semi(l1);
+
+  return chan_chp;
+}
+
+void create_glue_machine (CHPProject *cp, 
+                          act_boolean_netlist_t *bnl, InstType *it) {
+
+  Channel *ch = dynamic_cast<Channel *> (it->BaseType());
+  std::vector<ActId *> ports;
+  for (auto i = 0; i < ch->getNumPorts(); i++) {
+    ActId *port_id = new ActId(ch->getPortName(i));
+    InstType *pit = ch->getPortType(i);
+    get_port_full_id(bnl,pit,port_id,ports);
+  }
+
+  for (auto i = 0; i < 2; i++) {
+    StateMachine *sm = new StateMachine();
+    act_chp_lang_t *chan_chp = create_channel_chp(ch,i);
+    sm->SetChan(ch);
+    sm->SetNumber(0);
+    sm->SetDir(i);
+    Variable *var = new Variable(i+4,0,0,0,NULL,NULL);
+    var->AddDimension(TypeFactory::bitWidth(it)-1);
+    sm->AddVar(var);
+    traverse_chp(NULL, ch, chan_chp, sm, sm, NULL, NULL, ACT_CHP_NULL, 0);
+    Port *p = new Port(i == 0 ? 1 : 0,TypeFactory::bitWidth(ch),1,1,NULL,NULL);
+    p->SetId(new ActId(ch->getName()));
+    p->SetOwner(sm);
+    sm->AddPort(p);
+    for (auto pp : ports) {
+      cp->GetChan()[it->BaseType()].push_back(pp);
+      int dir = ch->chanDir(pp,i) == 1 ? 1 : 0;
+      Port *p = new Port(dir,1,0,1,NULL,NULL);
+      p->SetId(pp);
+      p->SetOwner(sm);
+      sm->AddPort(p);
+    }
+    cp->AppendGlue(sm);
+    cp->GetGlue()[it->BaseType()] = sm;
+  }
+
+  return;
+}
+
+//Function to collect user defined channel types
+void collect_chan (Process *p, CHPProject *cp) {
+
+  Scope *cs = p->CurScope();
+
+  ActUniqProcInstiter i(cs);
+
+  for (i = i.begin(); i != i.end(); i++) {
+    ValueIdx *vx = *i;
+    collect_chan (dynamic_cast<Process *>(vx->t->BaseType()), cp);
+  }
+
+  act_boolean_netlist_t *bnl = BOOL->getBNL(p);
+
+  int exist = 0;
+  ActInstiter itr(cs);
+  for (itr = itr.begin(); itr != itr.end(); itr++) {
+    ValueIdx *vx = *itr;
+    if (TypeFactory::isUserType(vx->t->BaseType()) &&
+        TypeFactory::isChanType(vx->t->BaseType())) {
+      InstType *it = vx->t;
+      for (auto itt : cp->GetChan()) {
+        if (itt.first == it->BaseType()) { exist = 1; }
+      }
+      if (exist == 0) {
+        create_glue_machine(cp,bnl,it);
+      } else {
+        exist = 0;
+      }
+    }
+  }
+
+  return;
+}
+
 //Function to traverse act data strcutures and walk
 //through entire act project hierarchy while building
 //state machine for each process
-void traverse_act (Process *p, CHPProject *cp, int opt) {
+void traverse_act (Process *p, CHPProject *cp, int opt, char *pn) {
 
   act_boolean_netlist_t *bnl = BOOL->getBNL(p);
 
@@ -1495,6 +2263,7 @@ void traverse_act (Process *p, CHPProject *cp, int opt) {
 
   act_languages *lang;
   act_chp *chp;
+  act_prs *prs;
   Scope *cs;
 
   if (p) {
@@ -1504,18 +2273,24 @@ void traverse_act (Process *p, CHPProject *cp, int opt) {
 
   if (lang) {
     chp = lang->getchp();
+    prs = lang->getprs();
   }
 
   ActUniqProcInstiter i(cs);
 
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
-    traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp, opt);
+    traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp, opt, pn);
   }
 
   act_chp_lang_t *chp_lang = NULL;
   if (chp) {
     chp_lang = chp->c;
+  }
+
+  act_prs_lang_t *prs_lang = NULL;
+  if (prs) {
+    prs_lang = prs->p;
   }
 
   //Create state machine for the currect
@@ -1524,34 +2299,74 @@ void traverse_act (Process *p, CHPProject *cp, int opt) {
   sm->SetProcess(p);
   sm->SetNumber(0);
 
-  //add instances
-  add_instances(cs, bnl, sm);
+  int lev = get_proc_level(p, NULL);
 
-  //add ports
-  add_ports(cs, bnl, sm);
-
-  declare_vars(cs, bnl, sm);
-  //run chp traverse to build state machine
-  if (chp_lang) {
-    traverse_chp(p, chp_lang, sm, sm, NULL, NULL, ACT_CHP_NULL, opt);
+  //If PRS process add to the list and return
+  if (lev == ACT_MODEL_CHP && chp_lang) {
+    //add instances
+    add_instances(cp, bnl, sm);
+   
+    //add ports
+    add_ports(bnl, sm);
+   
+    declare_vars(cs, bnl, sm);
+    //run chp traverse to build state machine
+    if (lang->getchp()) {
+      traverse_chp(p, NULL, chp_lang, sm, sm, NULL, NULL, ACT_CHP_NULL, opt);
+    }
+   
+    //append linked list of chp project
+    //processes
+    cp->Append(sm);
+  } else if (lev == ACT_MODEL_PRS && lang->getprs()) {
+    //add ports
+    add_ports(bnl, sm);
+    sm->SetPrs(); 
+    fprintf(prs_list, "%s\n", p->getName());
+    cp->Append(sm);
+    return;
+  } else {
+    if  (Act::lang_subst) {
+      //add instances
+      add_instances(cp, bnl, sm);
+     
+      //add ports
+      add_ports(bnl, sm);
+     
+      declare_vars(cs, bnl, sm);
+      //run chp traverse to build state machine
+      if (chp_lang) {
+        traverse_chp(p, NULL, chp_lang, sm, sm, NULL, NULL, ACT_CHP_NULL, opt);
+      }
+     
+      //append linked list of chp project
+      //processes
+      cp->Append(sm);
+    } else { 
+      printf("SOMETHING IS WRONG\n"); 
+    }
   }
 
-  //append linked list of chp project
-  //processes
-  cp->Append(sm);
+  return;
 }
 
-CHPProject *build_machine (Act *a, Process *p, int opt) {
+CHPProject *build_machine (Act *a, Process *p, int opt, char *pn) {
 
   ActPass *apb = a->pass_find("booleanize");
 
   BOOL = dynamic_cast<ActBooleanizePass *>(apb);
 
   CHPProject *cp = new CHPProject();
-  traverse_act (p, cp, opt);
+
+  collect_chan(p, cp);
+
+  prs_list = fopen("prs_list.txt", "w");
+  traverse_act (p, cp, opt, pn);
   for (auto sm = cp->Head(); sm; sm = sm->Next()) {
     init_unused_ports(sm);
   }
+  fclose(prs_list);
+
   map_instances(cp);
 
   return cp;

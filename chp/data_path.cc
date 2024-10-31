@@ -1,4 +1,4 @@
-#include <act/state_machine.h>
+#include "state_machine.h"
 
 namespace fpga {
 
@@ -6,27 +6,27 @@ namespace fpga {
  *  Data class
  */
 
-int Data::GetType() {
+int CHPData::GetType() {
   return type;
 }
 
-Condition *Data::GetCond() {
+Condition *CHPData::GetCond() {
   return cond;
 }
 
-Process *Data::GetActScope() {
+Process *CHPData::GetActScope() {
   return act_scope;
 }
 
-StateMachine *Data::GetScope() {
+StateMachine *CHPData::GetScope() {
   return scope;
 }
 
-ActId *Data::GetId() {
+ActId *CHPData::GetId() {
   return id;
 }
 
-Data::Data() {
+CHPData::CHPData() {
   cond = 0;
   up = 0;
   dn = 0;
@@ -38,7 +38,7 @@ Data::Data() {
   printed = 0;
 }
 
-Data::Data (int type_, 
+CHPData::CHPData (int type_, 
             int up_,
             int dn_,
             Process *act_scope_, 
@@ -63,7 +63,7 @@ Data::Data (int type_,
   printed = 0;
 }
 
-Data::Data (int type_,
+CHPData::CHPData (int type_,
             int up_,
             int dn_,
             Process *act_scope_, 
@@ -84,7 +84,7 @@ Data::Data (int type_,
   printed = 0;
 }
 
-Data::~Data () {}
+CHPData::~CHPData () {}
 
 /*
  *  Port Class
@@ -112,6 +112,22 @@ Port::Port(){
 	reg = 0;
 	root_id = NULL;
   connection = NULL;
+  o_type = 0;
+  owner.sm = NULL;
+  owner.smi = NULL;
+}
+
+Port::Port(Port *p){
+  dir = p->dir;
+  width = p->width;
+  ischan = p->ischan;
+	inst = p->inst;
+	reg = p->reg;
+	root_id = p->root_id;
+  connection = p->connection;
+  o_type = p->o_type;
+  owner.sm = p->owner.sm;
+  owner.smi = p->owner.smi;
 }
 
 Port::Port(int dir_, int width_, int chan_, int reg_, 
@@ -123,6 +139,9 @@ Port::Port(int dir_, int width_, int chan_, int reg_,
 	reg = reg_;
 	root_id = rid_;
   connection = c_;
+  o_type = 0;
+  owner.sm = NULL;
+  owner.smi = NULL;
 }
 
 Port::~Port() {}

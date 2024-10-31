@@ -1,16 +1,15 @@
 #include <common/int.h>
 #include <act/act.h>
 #include <act/passes/booleanize.h>
-#include <act/state_machine.h>
 #include <string>
 #include <math.h>
+
+#include "state_machine.h"
 
 namespace fpga {
 
 FILE *output_file = stdout;
 static ActBooleanizePass *BOOL = NULL;
-
-void PrintExpression(Expr *, StateMachine *, std::string &);
 
 void get_module_name (Process *p, std::string &str) {
 
@@ -33,16 +32,47 @@ void get_module_name (Process *p, std::string &str) {
 
   for (auto i = 0; i < len; i++) {
     if (mn[i] == 0x3c) {
-      str += "_";
       continue;
     } else if (mn[i] == 0x3e) {
-      str += "_";
       continue;
     } else if (mn[i] == 0x2c) {
-      str += "_";
       continue;
     } else {
       str += mn[i];
+    }
+  }
+
+  return;
+}
+
+void get_chan_name (Channel *ch, std::string &str) {
+
+  const char *cn = ch->getName();
+  std::string tmp1 = "";
+  std::string tmp2 = "";
+
+  if (ch->getns() && ch->getns()->Parent()) {
+    ActNamespace *an = ch->getns();
+    tmp1 = tmp2 + an->getName() + "_" + tmp1;
+    an = an->Parent();
+    while (an->Parent()) {
+      tmp1 = tmp2 + an->getName() + "_" + tmp1;
+      an = an->Parent();
+    }
+  }
+  str += tmp1;
+
+  int len = strlen(cn);
+
+  for (auto i = 0; i < len; i++) {
+    if (cn[i] == 0x3c) {
+      continue;
+    } else if (cn[i] == 0x3e) {
+      continue;
+    } else if (cn[i] == 0x2c) {
+      continue;
+    } else {
+      str += cn[i];
     }
   }
 
@@ -58,15 +88,15 @@ void print_array_ref (ActId *id, StateMachine *scope, std::string &str) {
       PrintExpression(id->arrayInfo()->getDeref(i), scope, str);
       str += " ]";
     }
-  }
+  } 
 
   return;
 }
 
-void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
+void PrintSubExpression(Expr *e, StateMachine *scope, std::string &str) {
   if (e->type == E_NOT || e->type == E_COMPLEMENT) { str += " ~("; } 
   else if (e->type == E_UMINUS) { str += " -("; } 
-  else if (e->type == E_CONCAT || e->type == E_COMMA) { str += "{"; } 
+  else if (e->type == E_CONCAT || e->type == E_COMMA) { str = str; }
   else { str += "("; }
   switch (e->type) {
     case (E_AND): {
@@ -117,52 +147,6 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       PrintExpression(e->u.e.l, scope, str);
       break;
     }
-    case (E_INT): {
-      BigInt *bi;
-      if (e->u.ival.v_extra) {
-        bi = (BigInt*)e->u.ival.v_extra;
-        if (bi->getWidth() == 0) {
-          str = str + "{0{1'b0}}";
-        } else {
-          str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
-        }
-      } else {
-        str = str + "64'd" + std::to_string(e->u.ival.v);
-      }
-      break;
-    }
-    case (E_VAR): {
-      char tmp[1024];
-      ActId *id;
-      Scope *act_scope;
-      act_scope = scope->GetProc()->CurScope();
-      id = (ActId *)e->u.e.l;
-      act_boolean_netlist_t *bnl;
-      bnl = BOOL->getBNL(scope->GetProc());
-      act_dynamic_var_t *dv;
-      dv = BOOL->isDynamicRef(bnl, id);
-      str += "\\";
-      if (!dv) {
-        id->Canonical(act_scope)->toid()->sPrint(tmp,1024);
-        str += tmp;
-      } else {
-        print_array_ref(id, scope, str);
-      }
-      break;
-    }
-    case (E_QUERY): {
-      PrintExpression(e->u.e.l, scope, str); str += " ? ";
-      PrintExpression(e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; PrintExpression(e->u.e.r->u.e.r, scope, str);
-      break;
-    }
-    case (E_LPAR): {
-      str += "LPAR\n";
-      break;
-    }
-    case (E_RPAR): {
-      str += "RPAR\n";
-      break;
-    }
     case (E_XOR): {
       PrintExpression(e->u.e.l, scope, str); str += " ^ "; PrintExpression(e->u.e.r, scope, str);
       break;
@@ -191,6 +175,68 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       PrintExpression(e->u.e.l, scope, str); str += " != "; PrintExpression(e->u.e.r, scope, str);
       break;
     }
+    case (E_INT): {
+      BigInt *bi;
+      if (e->u.ival.v_extra) {
+        bi = (BigInt*)e->u.ival.v_extra;
+        if (bi->getWidth() == 0) {
+          str = str + "{0{1'b0}}";
+        } else {
+          str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
+        }
+      } else {
+        str = str + "64'd" + std::to_string(e->u.ival.v);
+      }
+      break;
+    }
+    case (E_VAR): {
+      char tmp[1024];
+      ActId *id;
+      id = (ActId *)e->u.e.l;
+      Scope *act_scope = NULL;
+      str += "\\";
+      if (scope->GetProc()) {
+        act_scope = scope->GetProc()->CurScope();
+        act_boolean_netlist_t *bnl;
+        bnl = BOOL->getBNL(scope->GetProc());
+        act_dynamic_var_t *dv;
+        dv = BOOL->isDynamicRef(bnl, id);
+        if (!dv) {
+          id->Canonical(act_scope)->toid()->sPrint(tmp,1024);
+          str += tmp;
+        } else {
+          print_array_ref(id, scope, str);
+        }
+      } else {
+        std::string self = "self";
+        id->sPrint(tmp,1024);
+        if (tmp == self) { 
+          std::string ch = "";
+          if (scope->GetChan()) get_chan_name(scope->GetChan(), ch);
+          if (scope->GetDir() == 0) {
+            str += "send_data";
+          } else {
+            str += "recv_data";
+          }
+        } else {
+          str += tmp;
+        }
+      }
+      break;
+    }
+    case (E_QUERY): {
+      PrintExpression(e->u.e.l, scope, str); str += " ? ";
+      PrintExpression(e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; PrintExpression(e->u.e.r->u.e.r, scope, str);
+      break;
+    }
+    case (E_LPAR): {
+      str += "LPAR\n";
+      break;
+    }
+    case (E_RPAR): {
+      str += "RPAR\n";
+      break;
+    }
     case (E_TRUE): {
       str += " 1'b1 ";
       break;  
@@ -207,47 +253,56 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       char tmp[1024];
       ActId *id;
       Scope *act_scope;
-      act_scope = scope->GetProc()->CurScope();
-      id = (ActId *)e->u.e.l;
-      act_connection *cc = id->Canonical(act_scope);
-      StateMachine *sm = scope->GetPar();
-      if (sm) {
-        while (sm->GetPar()) { sm = sm->GetPar(); }
-      }
-      str += "\\";
-      id->sPrint(tmp,1024);
-      str += tmp;
-      if (sm) {
-        if (sm->IsPort(cc) == 1) {
-          str +="_ready";
-        } else if (sm->IsPort(cc) == 2){
-          str +="_valid";
+      if (scope->GetProc()) {
+        act_scope = scope->GetProc()->CurScope();
+        id = (ActId *)e->u.e.l;
+        act_connection *cc = id->Canonical(act_scope);
+        StateMachine *sm = scope->GetPar();
+        if (sm) {
+          while (sm->GetPar()) { sm = sm->GetPar(); }
+        }
+        str += "\\";
+        id->sPrint(tmp,1024);
+        str += tmp;
+        if (sm) {
+          if (sm->IsPort(cc) == 1) {
+            str +="_ready";
+          } else if (sm->IsPort(cc) == 2){
+            str +="_valid";
+          } else {
+            str +="_valid";
+          }
         } else {
-          str +="_valid";
+          if (scope->IsPort(cc) == 1) {
+            str +="_ready";
+          } else if (scope->IsPort(cc) == 2){
+            str +="_valid";
+          } else {
+            str +="_valid";
+          }
         }
       } else {
-        if (scope->IsPort(cc) == 1) {
-          str +="_ready";
-        } else if (scope->IsPort(cc) == 2){
-          str +="_valid";
-        } else {
-          str +="_valid";
+        std::string ch = "";
+        if (scope->GetChan()) get_chan_name(scope->GetChan(), ch);
+        str += ch;
+        str += "_valid";
+      }
+      break;
+    }
+    case (E_COMMA):
+    case (E_CONCAT): {
+      str += "{";
+      Expr *tmp_expr = e;
+      while (tmp_expr) {
+        PrintExpression(tmp_expr->u.e.l, scope, str);
+        if (tmp_expr->u.e.r) {
+          str += " ,";
+          tmp_expr = tmp_expr->u.e.r;
+        } else { 
+          tmp_expr = NULL; 
         }
       }
-      break;
-    }
-    case (E_COMMA): {
-      PrintExpression(e->u.e.l, scope, str);
-      if (e->u.e.r) {
-        str += " ,"; PrintExpression(e->u.e.r, scope, str);
-      }
-      break;
-    }
-    case (E_CONCAT): {
-      PrintExpression(e->u.e.l, scope, str);
-      if (e->u.e.r) {
-        str += " ,"; PrintExpression(e->u.e.r, scope, str);
-      }
+      str += " }";
       break;
     }
     case (E_BITFIELD): {
@@ -299,7 +354,14 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_BUILTIN_INT): {
-      PrintExpression(e->u.e.l, scope, str);
+      if (e->u.e.r) {
+        str += std::to_string(e->u.e.r->u.ival.v);
+        str += "'(";
+        PrintExpression(e->u.e.l, scope, str);
+        str += " )";
+      } else {
+        PrintExpression(e->u.e.l, scope, str);
+      }
       break;
     }
     case (E_BUILTIN_BOOL): {
@@ -327,7 +389,309 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
   }
-  if (e->type == E_CONCAT || e->type == E_COMMA) { str += " }"; } 
+  if (e->type == E_CONCAT || e->type == E_COMMA) { str = str; } 
+  else { str += " )"; }
+
+  return;
+}
+
+void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
+  if (e->type == E_NOT || e->type == E_COMPLEMENT) { str += " ~("; } 
+  else if (e->type == E_UMINUS) { str += " -("; } 
+  else if (e->type == E_CONCAT || e->type == E_COMMA || e->type == E_VAR || e->type == E_INT) { str = str; }
+  else { str += "("; }
+  switch (e->type) {
+    case (E_AND): {
+      PrintExpression(e->u.e.l, scope, str); str += " & "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_OR): {
+      PrintExpression(e->u.e.l, scope, str); str += " | "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_NOT): {
+      PrintExpression(e->u.e.l, scope, str);
+      break;
+    }
+    case (E_PLUS): {
+      PrintExpression(e->u.e.l, scope, str); str += " + "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_MINUS): {
+      PrintExpression(e->u.e.l, scope, str); str += " - "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_MULT): {
+      PrintExpression(e->u.e.l, scope, str); str += " * "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_DIV): {
+      PrintExpression(e->u.e.l, scope, str); str += " / "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_MOD): {
+      PrintExpression(e->u.e.l, scope, str); str += " % "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_LSL): {
+      PrintExpression(e->u.e.l, scope, str); str += " << "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_LSR): {
+      PrintExpression(e->u.e.l, scope, str); str += " >> "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_ASR): {
+      PrintExpression(e->u.e.l, scope, str); str += " >>> "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_UMINUS): {
+      PrintExpression(e->u.e.l, scope, str);
+      break;
+    }
+    case (E_XOR): {
+      PrintExpression(e->u.e.l, scope, str); str += " ^ "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_LT): {
+      PrintExpression(e->u.e.l, scope, str); str += " < "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_GT): {
+      PrintExpression(e->u.e.l, scope, str); str += " > "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_LE): {
+      PrintExpression(e->u.e.l, scope, str); str += " <= "; PrintExpression(e->u.e.r, scope, str);
+      break;  
+    }
+    case (E_GE): {
+      PrintExpression(e->u.e.l, scope, str); str += " >= "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_EQ): {
+      PrintExpression(e->u.e.l, scope, str); str += " == "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_NE): {
+      PrintExpression(e->u.e.l, scope, str); str += " != "; PrintExpression(e->u.e.r, scope, str);
+      break;
+    }
+    case (E_INT): {
+      BigInt *bi;
+      if (e->u.ival.v_extra) {
+        bi = (BigInt*)e->u.ival.v_extra;
+        if (bi->getWidth() == 0) {
+          str = str + "{0{1'b0}}";
+        } else {
+          str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
+        }
+      } else {
+        str = str + "64'd" + std::to_string(e->u.ival.v);
+      }
+      break;
+    }
+    case (E_VAR): {
+      char tmp[1024];
+      ActId *id;
+      id = (ActId *)e->u.e.l;
+      Scope *act_scope = NULL;
+      str += "\\";
+      if (scope->GetProc()) {
+        act_scope = scope->GetProc()->CurScope();
+        act_boolean_netlist_t *bnl;
+        bnl = BOOL->getBNL(scope->GetProc());
+        act_dynamic_var_t *dv;
+        dv = BOOL->isDynamicRef(bnl, id);
+        if (!dv) {
+          id->Canonical(act_scope)->toid()->sPrint(tmp,1024);
+          str += tmp;
+        } else {
+          print_array_ref(id, scope, str);
+        }
+      } else {
+        std::string self = "self";
+        id->sPrint(tmp,1024);
+        if (tmp == self) { 
+          std::string ch = "";
+          if (scope->GetChan()) get_chan_name(scope->GetChan(), ch);
+          if (scope->GetDir() == 0) {
+            str += "send_data";
+          } else {
+            str += "recv_data";
+          }
+        } else {
+          str += tmp;
+        }
+      }
+      break;
+    }
+    case (E_QUERY): {
+      PrintExpression(e->u.e.l, scope, str); str += " ? ";
+      PrintExpression(e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; PrintExpression(e->u.e.r->u.e.r, scope, str);
+      break;
+    }
+    case (E_LPAR): {
+      str += "LPAR\n";
+      break;
+    }
+    case (E_RPAR): {
+      str += "RPAR\n";
+      break;
+    }
+    case (E_TRUE): {
+      str += " 1'b1 ";
+      break;  
+    }
+    case (E_FALSE): {
+      str += " 1'b0 ";
+      break;
+    }
+    case (E_COLON): {
+      str += " : ";
+      break;
+    }
+    case (E_PROBE): {
+      char tmp[1024];
+      ActId *id;
+      Scope *act_scope;
+      if (scope->GetProc()) {
+        act_scope = scope->GetProc()->CurScope();
+        id = (ActId *)e->u.e.l;
+        act_connection *cc = id->Canonical(act_scope);
+        StateMachine *sm = scope->GetPar();
+        if (sm) {
+          while (sm->GetPar()) { sm = sm->GetPar(); }
+        }
+        str += "\\";
+        id->sPrint(tmp,1024);
+        str += tmp;
+        if (sm) {
+          if (sm->IsPort(cc) == 1) {
+            str +="_ready";
+          } else if (sm->IsPort(cc) == 2){
+            str +="_valid";
+          } else {
+            str +="_valid";
+          }
+        } else {
+          if (scope->IsPort(cc) == 1) {
+            str +="_ready";
+          } else if (scope->IsPort(cc) == 2){
+            str +="_valid";
+          } else {
+            str +="_valid";
+          }
+        }
+      } else {
+        std::string ch = "";
+        if (scope->GetChan()) get_chan_name(scope->GetChan(), ch);
+        str += ch;
+        str += "_valid";
+      }
+      break;
+    }
+    case (E_COMMA):
+    case (E_CONCAT): {
+      str += "{";
+      Expr *tmp_expr = e;
+      while (tmp_expr) {
+        PrintExpression(tmp_expr->u.e.l, scope, str);
+        if (tmp_expr->u.e.r) {
+          str += " ,";
+          tmp_expr = tmp_expr->u.e.r;
+        } else { 
+          tmp_expr = NULL; 
+        }
+      }
+      str += " }";
+      break;
+    }
+    case (E_BITFIELD): {
+      char tmp[1024];
+      ActId *id;
+      Scope *act_scope;
+      act_scope = scope->GetProc()->CurScope();
+      id = (ActId *)e->u.e.l;
+      act_boolean_netlist_t *bnl;
+      bnl = BOOL->getBNL(scope->GetProc());
+      act_dynamic_var_t *dv;
+      dv = BOOL->isDynamicRef(bnl, id);
+      unsigned int l;
+      unsigned int r;
+      l = e->u.e.r->u.e.r->u.ival.v;
+      if (e->u.e.r->u.e.l) {
+        r = e->u.e.r->u.e.l->u.ival.v;
+      } else {
+        r = l;
+      }
+      str += "\\";
+      if (!dv) {
+        id->Canonical(act_scope)->toid()->sPrint(tmp, 1024);
+        str += tmp;
+      } else {
+        print_array_ref(id, scope, str);
+      }
+      if (l!=r) {
+        str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
+      } else {
+        str = str + " [" + std::to_string(r) + "]";
+      }
+      break;
+    }
+    case (E_COMPLEMENT): {
+      PrintExpression(e->u.e.l, scope, str);
+      break;
+    }
+    case (E_REAL): {
+      str += std::to_string(e->u.ival.v);
+      break;
+    }
+    case (E_ANDLOOP): {
+      str += "ANDLOOP you mean?\n";
+      break;
+    }
+    case (E_ORLOOP): {
+      str += "ORLOOP you mean?\n";
+      break;
+    }
+    case (E_BUILTIN_INT): {
+      if (e->u.e.r) {
+        str += std::to_string(e->u.e.r->u.ival.v);
+        str += "'(";
+        PrintExpression(e->u.e.l, scope, str);
+        str += " )";
+      } else {
+        PrintExpression(e->u.e.l, scope, str);
+      }
+      break;
+    }
+    case (E_BUILTIN_BOOL): {
+      PrintExpression(e->u.e.l, scope, str);
+      break;
+    }
+    case (E_RAWFREE): {
+      str += "RAWFREE\n";
+      break;
+    }
+    case (E_END): {
+      str += "END\n";
+      break;
+    }
+    case (E_NUMBER): {
+      str += "NUMBER\n";
+      break;
+    }
+    case (E_FUNCTION): {
+      str += "FUNCTION\n";
+      break;
+    }
+    default: {
+      str += "Whaaat?! "; str += std::to_string(e->type); str += "\n";
+      break;
+    }
+  }
+  if (e->type == E_CONCAT || e->type == E_COMMA || e->type == E_VAR || e->type == E_INT) { str = str; }
   else { str += " )"; }
 
   return;
@@ -363,8 +727,14 @@ void Condition::PrintVerilogExpr(std::string &name) {
   PrintScopeVar(scope, name);
   switch (type) {
     case (0) :
-      u.v->sPrint(tmp,1024);
-      name = name + "commu_compl_" + std::to_string(num) + " = \\" + tmp + "_valid & \\" + tmp + "_ready ";
+      if (scope->GetChan()) {
+        std::string ch = "";
+        get_chan_name(scope->GetChan(), ch);
+        name = name + "commu_compl_" + std::to_string(num) + " = \\" + ch + "_valid & \\" + ch + "_ready ";
+      } else {
+        u.v->sPrint(tmp,1024);
+        name = name + "commu_compl_" + std::to_string(num) + " = \\" + tmp + "_valid & \\" + tmp + "_ready ";
+      }
       break;
     case (1) :
       name = name + "guard_" + std::to_string(num) + " = ";
@@ -481,16 +851,23 @@ void Condition::PrintVerilogDeclRaw(std::string &name) {
 void Variable::PrintVerilog() {
 
   char tmp[1024];
-  id->toid()->sPrint(tmp, 1024);
+  if (type < 4) 
+   id->toid()->sPrint(tmp, 1024);
 
   std::string var;
 
-  if (type == 0 || type == 3) { var = "reg\t"; } 
+  if (type == 0 || type == 3 || type == 4 || type == 5) { var = "reg\t"; } 
   else { var = "wire\t"; }
 
   if (dim[0] >= 1) { var = var + "[" + std::to_string(dim[0]) + ":0]"; }
 
-  var = var + "\t\\" + tmp;
+  if (type == 4) {
+    var = var + "\t\\send_data = 0";
+  }else if (type == 5) {
+    var = var + "\t\\recv_data = 0";
+  } else {
+    var = var + "\t\\" + tmp;
+  }
 
   for (auto i = 1; i < dim.size(); i++) {
     if (isdyn == 1) { var += " "; }
@@ -520,6 +897,17 @@ void Variable::PrintVerilog() {
     init += " <= 0;";
     for (auto i = 1; i < dim.size(); i++) { init += "\t\nend\n"; }
     init += "end\n\n";
+  }
+
+  if (id) {
+    char tmp1[1024];
+    act_connection *ct = id;
+    while (ct->next != id) {
+      ct = ct->next;
+      ct->toid()->sPrint(tmp1,1024);
+      var = var + "wire\t\\" + tmp1 + " ;\n";
+      var = var + "assign \\" + tmp1 + " = \\" + tmp + " ;\n\n";
+    }
   }
 
   fprintf(output_file, "%s", var.c_str());
@@ -623,36 +1011,23 @@ void Port::PrintVerilog() {
 
   if (dir == 0) {
     if (ischan != 0) {
-      if (reg) {
-        port = port + "\t,output reg\t\\" + tmp;
-      } else {
-        port = port + "\t,output\t\\" + tmp;
-      }
+      if (reg) { port = port + "\t,output reg\t\\" + tmp; } 
+      else { port = port + "\t,output\t\\" + tmp; }
       port = port + "_valid\n\t,input\t\t\\" + tmp + "_ready\n";
     }
-    if (ischan != 2) {
-      if (reg) {
-        port = port + "\t,output reg\t";
-      } else {
-        port = port + "\t,output\t";
-      }
+    if (ischan != 2 && width > 0) {
+      if (reg) { port = port + "\t,output reg\t"; } 
+      else { port = port + "\t,output\t"; }
     }
   } else {
     if (ischan != 0)  {
-      if (reg) {
-        port = port + "\t,output reg\t\\" + tmp;
-      } else {
-        port = port + "\t,output\t\\" + tmp;
-      }
+      if (reg) { port = port + "\t,output reg\t\\" + tmp; } 
+      else {port = port + "\t,output\t\\" + tmp; }
       port = port + "_ready\n\t,input\t\t\\" + tmp + "_valid\n";
     }
-    if (ischan != 2) {
-      port += "\t,input\t\t";
-    }
+    if (ischan != 2 && width > 0) { port += "\t,input\t\t"; }
   }
-  if (ischan != 2) {
-    port = port + "[" + std::to_string(width-1) + ":0]\t\\" + tmp;
-  }
+  if (ischan != 2 && width > 0) { port = port + "[" + std::to_string(width-1) + ":0]\t\\" + tmp; }
   fprintf(output_file, "%s\n", port.c_str());
   port.clear();
 
@@ -737,19 +1112,36 @@ void State::PrintVerilog(std::string &str) {
   return;
 }
 
-void Data::PrintVerilogAssignment(std::string &str) {
+void CHPData::PrintVerilogAssignment(std::string &str) {
+  std::string self = "self";
+  std::string chan = "chan";
+  std::string ch = "";
   if (printed) { return; }
   printed = 1;
   str += "\t\\";
   act_boolean_netlist_t *bnl;
-  bnl = BOOL->getBNL(scope->GetProc());
-  act_dynamic_var_t *dv;
-  dv = BOOL->isDynamicRef(bnl, id);
+  act_dynamic_var_t *dv = NULL;
+  if (scope->GetProc()) {
+    bnl = BOOL->getBNL(scope->GetProc());
+    dv = BOOL->isDynamicRef(bnl, id);
+  } else {
+    get_chan_name(scope->GetChan(), ch);
+  }
 
   char tmp[1024];
   if (!dv) { 
     id->sPrint(tmp,1024);
-    str += tmp;
+    if (tmp == self) {
+      if (scope->GetDir() == 0) {
+        str += "send_data";
+      } else {
+        str += "recv_data";
+      }
+    } else if (tmp == chan) {
+      str += ch;
+    } else {
+      str += tmp;
+    }
   } else {
     print_array_ref(id, scope, str);
   }
@@ -758,10 +1150,19 @@ void Data::PrintVerilogAssignment(std::string &str) {
     PrintExpression(u.assign.e, scope, str);
   } else if (type == 1 || type == 6) {
     str +=  "\\";
-    u.recv.chan->sPrint(tmp,1024);
-    str += tmp;
+    if (scope->GetChan()) {
+      str += ch;
+    } else {
+      u.recv.chan->sPrint(tmp,1024);
+      str += tmp;
+    }
   } else if (type == 2 || type == 5) {
-    PrintExpression(u.send.se, scope, str);
+    if (scope->GetChan()) {
+      u.recv.chan->sPrint(tmp,1024);
+      str += tmp;
+    } else {
+      PrintExpression(u.send.se, scope, str);
+    }
   }
   str += " ;\n";
 
@@ -772,8 +1173,11 @@ void Data::PrintVerilogAssignment(std::string &str) {
 //f = 1 - else if
 //f = 2 - else
 //f = 3 - combinational else
-void Data::PrintVerilog(int f, std::string &da)
+void CHPData::PrintVerilog(int f, std::string &da)
 {
+  std::string self = "self";
+  std::string chan = "chan";
+  std::string ch = "";
   char tmp[1024];
 
   if (f == 0) { da += "if ("; }
@@ -793,12 +1197,20 @@ void Data::PrintVerilog(int f, std::string &da)
     da += "end ";
   }
   if (f == 2) {
+    id->sPrint(tmp, 1024);
+    if (scope->GetChan()) { get_chan_name(scope->GetChan(), ch); }
     da += "else begin\n";
     da += "\t\\";
-    id->sPrint(tmp, 1024);
-    da = da + tmp + " <= \\";
-    id->sPrint(tmp, 1024);
-    da = da + tmp + " ;\n";
+    if (tmp == self) {
+      da = da + "recv_data" + " <= \\";
+      da = da + "recv_data" + " ;\n";
+    } else if (tmp == chan) {
+      da = da + ch + " <= \\";
+      da = da + ch + " ;\n";
+    } else {
+      da = da + tmp + " <= \\";
+      da = da + tmp + " ;\n";
+    }
     da += "end";
   }
   if (f == 3) {
@@ -818,10 +1230,12 @@ void StateMachine::PrintVerilogData()
   char tmp[1024]; 
 
   for (auto id : data) {
-    act_boolean_netlist_t *bnl;
-    bnl = BOOL->getBNL(p);
-    act_dynamic_var_t *dv;
-    dv = BOOL->isDynamicRef(bnl, id.first->toid());
+    act_dynamic_var_t *dv = NULL;
+    if (p) {
+      act_boolean_netlist_t *bnl;
+      bnl = BOOL->getBNL(p);
+      dv = BOOL->isDynamicRef(bnl, id.first->toid());
+    }
     
     if (id.second[0]->GetType() == 2) {
       da += "always @(*)\n";
@@ -830,8 +1244,14 @@ void StateMachine::PrintVerilogData()
     }
   
     if (!dv) {
+      std::string self = "self";
+      std::string ch = "";
       id.first->toid()->sPrint(tmp,1024);
-      da = da + "if (\\reset ) begin\n\t\\" + tmp + " <= 0;\nend ";
+      if (tmp == self) {
+        da = da + "if (\\reset ) begin\n\t\\" + "recv_data" + " <= 0;\nend ";
+      } else {
+        da = da + "if (\\reset ) begin\n\t\\" + tmp + " <= 0;\nend ";
+      }
     } 
     for (auto dd : id.second) {
       if (!dv) {
@@ -855,7 +1275,7 @@ void StateMachine::PrintVerilogData()
   return;
 }
 
-void Data::PrintVerilogHSlhs(std::string &str, int func) {
+void CHPData::PrintVerilogHSlhs(std::string &str, int func) {
 
   Scope *s = act_scope->CurScope();
   act_connection *cid;
@@ -889,7 +1309,7 @@ void Data::PrintVerilogHSlhs(std::string &str, int func) {
   return;
 }
 
-void Data::PrintVerilogHSrhs(std::string &str){
+void CHPData::PrintVerilogHSrhs(std::string &str){
 
   if (type == 1 || type == 6) {
     u.recv.up_cond->PrintVerilogDeclRaw(str);
@@ -967,16 +1387,34 @@ void Port::PrintName(std::string &str){
 
 void StateMachineInst::PrintVerilog(){
 
+  if (glue == 1) {
+    PrintAsGlue();
+    return;
+  };
+
   std::string inst = "\\";
   get_module_name(p, inst);
-  inst = inst + " \\" + name->getName();
-  if (array) {
-    inst += array;
+  if (glue == 0) {
+    inst = inst + " \\" + u.p.name->getName();
+    if (array) {
+      inst += array;
+    }
+  } else {
+    char tmp[1024];
+    ports_c[0]->toid()->sPrint(tmp,1024);
+    std::string glue_name = "";
+    glue_name = glue_name + "\\" + u.g.name_src->getName() + "_" +
+                      u.g.name_dst->getName() + "_" +
+                      tmp;
   }
   inst += " (\n";
-  inst += "\t.\\clock (\\clock )\n\t,.\\reset (\\reset )\n";
+  inst += "\t .\\clock (\\clock )\n";
+  if (sm->GetPrs() == 0) {
+    inst += "\t,.\\reset (\\reset )\n";
+  }
+
   for (auto i = 0; i < ports.size(); i++) {
-    if (ports[i]->GetChan() != 2) {
+    if (ports[i]->GetChan() != 2 && ports[i]->GetWidth() > 0) {
       inst += "\t,.\\";
       sm->GetPorts()[i]->PrintName(inst);
       inst += " (\\";
@@ -994,6 +1432,15 @@ void StateMachineInst::PrintVerilog(){
       inst += "_valid (\\";
       ports[i]->PrintName(inst);
       inst += "_valid )\n";
+    }
+  }
+  if (ports.size() < sm->GetPorts().size()) {
+    for (auto i = ports.size(); i < sm->GetPorts().size(); i++) {
+      inst += "\t,.\\";
+      sm->GetPorts()[i]->PrintName(inst);
+      inst += " (\\";
+      sm->GetPorts()[i]->PrintName(inst);
+      inst += " )\n";
     }
   }
   inst += ");\n\n";
@@ -1042,8 +1489,7 @@ void StateMachine::PrintVerilog() {
     err += "/*\tNO CHP BODY IN THE PROCESS\t*/\n";
     fprintf(output_file, "%s", err.c_str());
   }
-  
-
+ 
   std::string cond;
   for (auto cc : guard_condition) { cc->PrintVerilogExpr(cond); }
   for (auto cc : state_condition) { cc->PrintVerilogExpr(cond); }
@@ -1063,14 +1509,178 @@ void StateMachine::PrintVerilog() {
 
   PrintVerilogData();
   PrintVerilogDataHS();
- 
-  for (auto i : inst) { i->PrintVerilog(); }
+
+  PrintVerilogGlueData();
+
+  for (auto i : inst) { 
+    i->PrintVerilog(); 
+  }
  
   if (!par & number == 0) {
-    fprintf(output_file, "\n\nendmodule\n\n");
+    fprintf(output_file, "\nendmodule\n\n");
   }
 
   return; 
+}
+
+void StateMachine::PrintVerilogGlueData() {
+
+  int ef = 0;
+  std::string da;
+  char tmp[1024]; 
+
+  for (auto dd : glue_data) {
+
+    std::string self = "self";
+    std::string ch = "";
+    get_chan_name(this->ch, ch);
+    dd->GetId()->sPrint(tmp,1024);
+
+    if (glue_dir == 1) {
+      if (ports[0]->GetWidth() > 0) {
+        da += "always @(posedge \\clock )\n";
+        da = da + "if (\\reset ) begin\n\t\\" + ch + " <= 0;\nend ";
+        dd->PrintVerilog(1, da);
+        if (dd->GetType() != 2) {
+          dd->PrintVerilog(2, da);
+        } else {
+          dd->PrintVerilog(3,da);
+        }
+        da += "\n";
+      }
+    } else {
+      da += "always @(posedge \\clock )\n";
+      da = da + "if (\\reset ) begin\n\t\\" + tmp + " <= 0;\nend ";
+      if (ports[0]->GetWidth() > 0) { dd->PrintVerilog(1, da); }
+      if (dd->GetType() != 2) {
+        dd->PrintVerilog(2, da);
+      } else {
+        dd->PrintVerilog(3,da);
+      }
+      da += "\n";
+    }
+    da += "\n";
+
+    da += "always @(*) begin\n\t\\";
+    if (dd->GetType() == 1) {
+      da = da + ch + "_ready";
+    } else {
+      da = da + ch + "_valid";
+    }
+    da += " <= (";
+    dd->PrintVerilogHSrhs(da);
+    da += " ) & ~reset ;\nend\n ";
+
+    fprintf(output_file, "%s", da.c_str());
+    da.clear();
+
+  }
+
+  return;
+}
+
+void Port::PrintAsGlue(std::string &tmp) {
+  char port[1024];
+  glue_port_name->sPrint(port,1024);
+  if (dir == 0) {
+    tmp = tmp + "\t,output\treg\t\\" + port;
+  } else {
+    tmp = tmp + "\t,input\t\t\\" + port;
+  }
+  tmp = tmp + "\n";
+
+  return;
+}
+
+void StateMachineInst::PrintAsGlue() {
+
+  std::string inst = "";
+  char port[1024];
+
+  std::string chan = "";
+  get_chan_name(dynamic_cast<Channel*>(ch->BaseType()), chan);
+
+  ports[0]->GetCon()->toid()->sPrint(port,1024);
+
+  inst = inst + "\\" + chan;
+  chan = "";
+  if (dir == 0) { inst = inst + "_out "; }
+  else { inst = inst + "_in "; }
+  inst = inst + "\\" + u.g.name_src->getName() + "_" + u.g.name_dst->getName() + "_" + port + "\n";
+
+  inst = inst + "(\n\t .\\clock\t(\\clock )\n";
+  inst = inst + "\t,.\\reset\t(\\reset )\n";
+
+  get_chan_name(sm->GetChan(), chan);
+  if (ports[0]->GetWidth() > 0) {
+    inst = inst + "\t,.\\" + chan + " (\\" + port + " )\n";
+  }
+  if (ports[0]->GetChan() != 0) {
+    inst = inst + "\t,.\\" + chan + "_valid (\\" + port + "_valid )\n";
+    inst = inst + "\t,.\\" + chan + "_ready (\\" + port + "_ready )\n";
+  }
+
+  for (auto i = 1; i < sm->GetPorts().size(); i++) {
+    char tmp1[1024];
+    sm->GetPorts()[i]->GetId()->sPrint(tmp1, 1024);
+    inst = inst + "\t,.\\" + tmp1 + " (\\" + port + "." + tmp1 + " )\n";
+  }
+  inst = inst + ");";
+
+  fprintf(output_file, "%s\n", inst.c_str());
+  inst.clear();
+
+  return;
+}
+
+void StateMachine::PrintAsGlue(std::string &ch_name) {
+
+  std::string head = "";
+  std::string tail = "";
+  std::string tmp = "";
+
+  get_chan_name(ch, tmp);
+
+  head = head + "module \\" + ch_name + "\n(";
+  head = head + "\t input\tclock\n\t,input\treset\n";
+  if (glue_dir == 0) {
+    head = head + "\t,input\t\\" + tmp + "_valid\n\t,output\treg\t\\" + tmp + "_ready\n";
+    if (ports[0]->GetWidth() > 0) {
+      head = head + "\t,input\t[" + std::to_string(ports[0]->GetWidth()-1) + ":0]\t\\" + tmp + "\n";
+    }
+  } else {
+    head = head + "\t,output\treg\t\\" + tmp + "_valid\n\t,input\t\\" + tmp + "_ready\n";
+    if (ports[0]->GetWidth() > 0) {
+      head = head + "\t,output\treg\t[" + std::to_string(ports[0]->GetWidth()-1) + ":0]\t\\" + tmp + "\n";
+    }
+  }
+  for (auto i = 1; i < ports.size(); i++) {
+    ports[i]->PrintAsGlue(head);
+  }
+  head = head + ");\n";
+  fprintf(output_file, "%s\n", head.c_str());
+
+  PrintVerilogWires();
+  for (auto s : ssm) { s->PrintVerilogWires(); }
+  PrintVerilogVars();
+  for (auto s : ssm) { s->PrintVerilogVars();  }
+  PrintVerilogParameters();
+  for (auto s : ssm) { s->PrintVerilogParameters(); }
+
+  std::string cond;
+  for (auto cc : guard_condition) { cc->PrintVerilogExpr(cond); }
+  for (auto cc : state_condition) { cc->PrintVerilogExpr(cond); }
+  for (auto cc : commu_condition) { cc->PrintVerilogExpr(cond); }
+  for (auto cc : comma_condition) { cc->PrintVerilogExpr(cond); }
+  fprintf(output_file, "%s\n", cond.c_str());
+  cond.clear();
+
+  PrintVerilog();
+
+  head.clear();
+  tail.clear();
+
+  return;
 }
 
 void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
@@ -1078,6 +1688,7 @@ void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
   ActPass *apb = a->pass_find("booleanize");
   BOOL = dynamic_cast<ActBooleanizePass *>(apb);
   for (auto n = hd; n; n = n->GetNext()) {
+    if (n->GetPrs() == 1) { continue; }
     std::string mod_name;
     get_module_name(n->GetProc(),mod_name);
     std::string mod_path = path + "/" + mod_name + ".v";
@@ -1088,6 +1699,17 @@ void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
     n->PrintVerilog();
     fclose(output_file);
   }
+  for (auto n = ghd; n; n = n->GetNext()) {
+    std::string ch_name;
+    get_chan_name(n->GetChan(),ch_name);
+    if (n->GetDir() == 0) { ch_name += "_out"; }
+    if (n->GetDir() == 1) { ch_name += "_in"; }
+    std::string ch_path = path + "/" + ch_name + ".v";
+    output_file = fopen(ch_path.c_str(),"w");
+    n->PrintAsGlue(ch_name);
+    fclose(output_file);
+  }
+
 
   return;  
 }
