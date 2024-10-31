@@ -657,10 +657,14 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
     }
     case (E_BUILTIN_INT): {
       if (e->u.e.r) {
-        str += std::to_string(e->u.e.r->u.ival.v);
-        str += "'(";
-        PrintExpression(e->u.e.l, scope, str);
-        str += " )";
+        if (e->u.e.l->type == E_INT || e->u.e.l->type == E_VAR) { 
+          PrintExpression(e->u.e.l, scope, str);
+        } else {
+          str += std::to_string(e->u.e.r->u.ival.v);
+          str += "'(";
+          PrintExpression(e->u.e.l, scope, str);
+          str += " )";
+        }
       } else {
         PrintExpression(e->u.e.l, scope, str);
       }
