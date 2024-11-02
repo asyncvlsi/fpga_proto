@@ -15,7 +15,7 @@ FILE *output_file = stdout;
 FILE *func_file = stdout;
 static ActBooleanizePass *BOOL = NULL;
 
-std::map<int,std::vector<int>> trunc_func_tracker;
+std::map<int,std::vector<int>> resize_func_tracker;
 
 void get_module_name (Process *p, std::string &str) {
 
@@ -99,28 +99,36 @@ void print_array_ref (ActId *id, StateMachine *scope, std::string &str) {
   return;
 }
 
-bool NeedTruncFunc(int from, int to) {
+bool NeedResizeFunc(int from, int to) {
 
-  if (trunc_func_tracker.find(from) != trunc_func_tracker.end()) {
-    std::vector tmp = trunc_func_tracker[from];
+  if (resize_func_tracker.find(from) != resize_func_tracker.end()) {
+    std::vector tmp = resize_func_tracker[from];
     if (std::find(tmp.begin(),tmp.end(),to) != tmp.end()) {
       return false;
     }
   }
 
-  trunc_func_tracker[from].push_back(to);
+  resize_func_tracker[from].push_back(to);
 
   return true;
 }
 
-void PrintTruncFunc(int from, int to) {
+void PrintResizeFunc(int from, int to) {
   std::string func;
   std::string s_from = std::to_string(from);
   std::string s_to = std::to_string(to);
-  std::string func_name = "truncate_" + s_from + "_to_" + s_to;
+  std::string func_name = "resize_" + s_from + "_to_" + s_to;
   func = "function [" + s_to + "-1:0] " + func_name + ";\n";
   func = func + "  input [" + s_from + "-1:0] in;\n  begin\n";
-  func = func + "    " + func_name + " = in[" + s_from + "-1:" + s_to + "];\n";
+  if (from > to) {
+    func = func + "    " + func_name + " = in[" + s_to + "-1:0];\n";
+  } else if (to > from) {
+    int delta = to - from;
+    std::string s_zero = "{" + std::to_string(delta) + "{1'b0}}";
+    func = func + "    " + func_name + " = {" + s_zero + ",in};\n";
+  } else {
+    func = func + "    " + func_name + " = in;\n";
+  }
   func = func + "  end\n";
   func += "endfunction\n\n";
   fprintf(func_file,"%s",func.c_str());
@@ -541,10 +549,10 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
         } else {
           tmp1 = GetExprResWidth(e->u.e.l, scope),e->u.e.r->u.ival.v;
           tmp2 = e->u.e.r->u.ival.v;
-          if (NeedTruncFunc(tmp1,tmp2)) {
-            PrintTruncFunc(tmp1,tmp2);
+          if (NeedResizeFunc(tmp1,tmp2)) {
+            PrintResizeFunc(tmp1,tmp2);
           }
-          str += "truncate_";
+          str += "resize_";
           str += std::to_string(tmp1);
           str += "_to_";
           str += std::to_string(tmp2);
@@ -1594,9 +1602,9 @@ void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
       fprintf(output_file, "`include \"func.v\"\n\n");
     }
     n->PrintVerilog();
-    fclose(func_file);
     fclose(output_file);
   }
+  fclose(func_file);
   for (auto n = ghd; n; n = n->GetNext()) {
     std::string ch_name;
     get_chan_name(n->GetChan(),ch_name);
