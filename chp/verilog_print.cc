@@ -93,99 +93,80 @@ void print_array_ref (ActId *id, StateMachine *scope, std::string &str) {
   return;
 }
 
-void PrintSubExpression(Expr *e, StateMachine *scope, std::string &str) {
-  if (e->type == E_NOT || e->type == E_COMPLEMENT) { str += " ~("; } 
-  else if (e->type == E_UMINUS) { str += " -("; } 
-  else if (e->type == E_CONCAT || e->type == E_COMMA) { str = str; }
-  else { str += "("; }
+int GetExprResWidth (Expr *e, StateMachine *scope) {
+
+  unsigned long l = 0;
+  unsigned long r = 0;
+
   switch (e->type) {
-    case (E_AND): {
-      PrintExpression(e->u.e.l, scope, str); str += " & "; PrintExpression(e->u.e.r, scope, str);
+    case (E_AND):
+    case (E_OR):
+    case (E_XOR):
+    case (E_PLUS):
+    case (E_MINUS):
+      return GetExprResWidth(e->u.e.l, scope);
       break;
-    }
-    case (E_OR): {
-      PrintExpression(e->u.e.l, scope, str); str += " | "; PrintExpression(e->u.e.r, scope, str);
+    case (E_MULT):
+      l = GetExprResWidth(e->u.e.l, scope);
+      r = GetExprResWidth(e->u.e.r, scope);
+      return l + r;
       break;
-    }
-    case (E_NOT): {
-      PrintExpression(e->u.e.l, scope, str);
+    case (E_DIV):
+      return GetExprResWidth(e->u.e.l, scope);
       break;
-    }
-    case (E_PLUS): {
-      PrintExpression(e->u.e.l, scope, str); str += " + "; PrintExpression(e->u.e.r, scope, str);
+    case (E_MOD):
+    case (E_LSL):
+    case (E_LSR):
+    case (E_ASR):
+      return GetExprResWidth(e->u.e.l, scope);
       break;
-    }
-    case (E_MINUS): {
-      PrintExpression(e->u.e.l, scope, str); str += " - "; PrintExpression(e->u.e.r, scope, str);
+    case (E_NOT):
+    case (E_UMINUS):
       break;
-    }
-    case (E_MULT): {
-      PrintExpression(e->u.e.l, scope, str); str += " * "; PrintExpression(e->u.e.r, scope, str);
+    case (E_LT): 
+    case (E_GT): 
+    case (E_LE): 
+    case (E_GE): 
+    case (E_EQ): 
+    case (E_NE):
+    case (E_TRUE):
+    case (E_FALSE):
+      return 1;
       break;
-    }
-    case (E_DIV): {
-      PrintExpression(e->u.e.l, scope, str); str += " / "; PrintExpression(e->u.e.r, scope, str);
+    case (E_QUERY):
+      return GetExprResWidth(e->u.e.r->u.e.l, scope);
       break;
-    }
-    case (E_MOD): {
-      PrintExpression(e->u.e.l, scope, str); str += " % "; PrintExpression(e->u.e.r, scope, str);
+    case (E_LPAR): 
+    case (E_RPAR):
+    case (E_COLON):
+    case (E_PROBE):
+    case (E_COMMA):
+    case (E_ANDLOOP):
+    case (E_ORLOOP):
+    case (E_RAWFREE):
+    case (E_END):
+    case (E_NUMBER):
+    case (E_FUNCTION):
+      return 0;
       break;
-    }
-    case (E_LSL): {
-      PrintExpression(e->u.e.l, scope, str); str += " << "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_LSR): {
-      PrintExpression(e->u.e.l, scope, str); str += " >> "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_ASR): {
-      PrintExpression(e->u.e.l, scope, str); str += " >>> "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_UMINUS): {
-      PrintExpression(e->u.e.l, scope, str);
-      break;
-    }
-    case (E_XOR): {
-      PrintExpression(e->u.e.l, scope, str); str += " ^ "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_LT): {
-      PrintExpression(e->u.e.l, scope, str); str += " < "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_GT): {
-      PrintExpression(e->u.e.l, scope, str); str += " > "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_LE): {
-      PrintExpression(e->u.e.l, scope, str); str += " <="; PrintExpression(e->u.e.r, scope, str);
-      break;  
-    }
-    case (E_GE): {
-      PrintExpression(e->u.e.l, scope, str); str += " >= "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_EQ): {
-      PrintExpression(e->u.e.l, scope, str); str += " == "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
-    case (E_NE): {
-      PrintExpression(e->u.e.l, scope, str); str += " != "; PrintExpression(e->u.e.r, scope, str);
-      break;
-    }
     case (E_INT): {
       BigInt *bi;
       if (e->u.ival.v_extra) {
         bi = (BigInt*)e->u.ival.v_extra;
         if (bi->getWidth() == 0) {
-          str = str + "{0{1'b0}}";
+          return 0;
         } else {
-          str = str + std::to_string(bi->getWidth()) + "'d" + std::to_string(e->u.ival.v);
+          return bi->getWidth();
         }
       } else {
-        str = str + "64'd" + std::to_string(e->u.ival.v);
+        unsigned long tmp1 = 0;
+        unsigned long tmp2 = e->u.ival.v;
+        while (tmp2) {
+          tmp2 = tmp2 >> 1;
+          tmp1 = tmp1 + 1;
+        }
+        if (tmp1 == 0) { tmp1 = 1; }
+        return tmp1;
       }
       break;
     }
@@ -194,127 +175,34 @@ void PrintSubExpression(Expr *e, StateMachine *scope, std::string &str) {
       ActId *id;
       id = (ActId *)e->u.e.l;
       Scope *act_scope = NULL;
-      str += "\\";
-      if (scope->GetProc()) {
-        act_scope = scope->GetProc()->CurScope();
-        act_boolean_netlist_t *bnl;
-        bnl = BOOL->getBNL(scope->GetProc());
-        act_dynamic_var_t *dv;
-        dv = BOOL->isDynamicRef(bnl, id);
-        if (!dv) {
-          id->Canonical(act_scope)->toid()->sPrint(tmp,1024);
-          str += tmp;
-        } else {
-          print_array_ref(id, scope, str);
-        }
+      act_scope = scope->GetProc()->CurScope();
+      act_boolean_netlist_t *bnl;
+      bnl = BOOL->getBNL(scope->GetProc());
+      ihash_bucket *hb;
+      act_booleanized_var_t *bv;
+      hb = ihash_lookup(bnl->cH,(long)id->Canonical(act_scope));
+      if (hb) {
+        bv = (act_booleanized_var_t *)hb->v;
+        return bv->width;
       } else {
-        std::string self = "self";
-        id->sPrint(tmp,1024);
-        if (tmp == self) { 
-          std::string ch = "";
-          if (scope->GetChan()) get_chan_name(scope->GetChan(), ch);
-          if (scope->GetDir() == 0) {
-            str += "send_data";
-          } else {
-            str += "recv_data";
-          }
-        } else {
-          str += tmp;
-        }
+        return 0;
       }
       break;
     }
-    case (E_QUERY): {
-      PrintExpression(e->u.e.l, scope, str); str += " ? ";
-      PrintExpression(e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; PrintExpression(e->u.e.r->u.e.r, scope, str);
-      break;
-    }
-    case (E_LPAR): {
-      str += "LPAR\n";
-      break;
-    }
-    case (E_RPAR): {
-      str += "RPAR\n";
-      break;
-    }
-    case (E_TRUE): {
-      str += " 1'b1 ";
-      break;  
-    }
-    case (E_FALSE): {
-      str += " 1'b0 ";
-      break;
-    }
-    case (E_COLON): {
-      str += " : ";
-      break;
-    }
-    case (E_PROBE): {
-      char tmp[1024];
-      ActId *id;
-      Scope *act_scope;
-      if (scope->GetProc()) {
-        act_scope = scope->GetProc()->CurScope();
-        id = (ActId *)e->u.e.l;
-        act_connection *cc = id->Canonical(act_scope);
-        StateMachine *sm = scope->GetPar();
-        if (sm) {
-          while (sm->GetPar()) { sm = sm->GetPar(); }
-        }
-        str += "\\";
-        id->sPrint(tmp,1024);
-        str += tmp;
-        if (sm) {
-          if (sm->IsPort(cc) == 1) {
-            str +="_ready";
-          } else if (sm->IsPort(cc) == 2){
-            str +="_valid";
-          } else {
-            str +="_valid";
-          }
-        } else {
-          if (scope->IsPort(cc) == 1) {
-            str +="_ready";
-          } else if (scope->IsPort(cc) == 2){
-            str +="_valid";
-          } else {
-            str +="_valid";
-          }
-        }
-      } else {
-        std::string ch = "";
-        if (scope->GetChan()) get_chan_name(scope->GetChan(), ch);
-        str += ch;
-        str += "_valid";
-      }
-      break;
-    }
-    case (E_COMMA):
     case (E_CONCAT): {
-      str += "{";
       Expr *tmp_expr = e;
       while (tmp_expr) {
-        PrintExpression(tmp_expr->u.e.l, scope, str);
+        l += GetExprResWidth(tmp_expr->u.e.l, scope);
         if (tmp_expr->u.e.r) {
-          str += " ,";
           tmp_expr = tmp_expr->u.e.r;
         } else { 
           tmp_expr = NULL; 
         }
       }
-      str += " }";
+      return l;
       break;
     }
     case (E_BITFIELD): {
-      char tmp[1024];
-      ActId *id;
-      Scope *act_scope;
-      act_scope = scope->GetProc()->CurScope();
-      id = (ActId *)e->u.e.l;
-      act_boolean_netlist_t *bnl;
-      bnl = BOOL->getBNL(scope->GetProc());
-      act_dynamic_var_t *dv;
-      dv = BOOL->isDynamicRef(bnl, id);
       unsigned int l;
       unsigned int r;
       l = e->u.e.r->u.e.r->u.ival.v;
@@ -323,76 +211,31 @@ void PrintSubExpression(Expr *e, StateMachine *scope, std::string &str) {
       } else {
         r = l;
       }
-      str += "\\";
-      if (!dv) {
-        id->Canonical(act_scope)->toid()->sPrint(tmp, 1024);
-        str += tmp;
-      } else {
-        print_array_ref(id, scope, str);
-      }
-      if (l!=r) {
-        str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
-      } else {
-        str = str + " [" + std::to_string(r) + "]";
-      }
+      return l-r;
       break;
     }
-    case (E_COMPLEMENT): {
-      PrintExpression(e->u.e.l, scope, str);
+    case (E_COMPLEMENT):
+      return GetExprResWidth(e->u.e.l, scope);
       break;
-    }
-    case (E_REAL): {
-      str += std::to_string(e->u.ival.v);
+    case (E_REAL):
+      return 0;
       break;
-    }
-    case (E_ANDLOOP): {
-      str += "ANDLOOP you mean?\n";
-      break;
-    }
-    case (E_ORLOOP): {
-      str += "ORLOOP you mean?\n";
-      break;
-    }
     case (E_BUILTIN_INT): {
       if (e->u.e.r) {
-        str += std::to_string(e->u.e.r->u.ival.v);
-        str += "'(";
-        PrintExpression(e->u.e.l, scope, str);
-        str += " )";
+        return e->u.e.r->u.ival.v;
       } else {
-        PrintExpression(e->u.e.l, scope, str);
+        return GetExprResWidth(e->u.e.l, scope);
       }
       break;
     }
-    case (E_BUILTIN_BOOL): {
-      PrintExpression(e->u.e.l, scope, str);
+    case (E_BUILTIN_BOOL):
+      return 1;
       break;
-    }
-    case (E_RAWFREE): {
-      str += "RAWFREE\n";
+    default:
       break;
-    }
-    case (E_END): {
-      str += "END\n";
-      break;
-    }
-    case (E_NUMBER): {
-      str += "NUMBER\n";
-      break;
-    }
-    case (E_FUNCTION): {
-      str += "FUNCTION\n";
-      break;
-    }
-    default: {
-      str += "Whaaat?! "; str += std::to_string(e->type); str += "\n";
-      break;
-    }
   }
-  if (e->type == E_CONCAT || e->type == E_COMMA) { str = str; } 
-  else { str += " )"; }
 
-  return;
+  return 0;
 }
 
 void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
@@ -657,11 +500,16 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
     }
     case (E_BUILTIN_INT): {
       if (e->u.e.r) {
-        if (e->u.e.l->type == E_INT || e->u.e.l->type == E_VAR) { 
+        if (e->u.e.l->type == E_INT || e->u.e.l->type == E_VAR) {
+          str.pop_back();
           PrintExpression(e->u.e.l, scope, str);
+          return;
         } else {
+          str += "truncate_";
+          str += std::to_string(GetExprResWidth(e->u.e.l, scope));
+          str += "_to_";
           str += std::to_string(e->u.e.r->u.ival.v);
-          str += "'(";
+          str += "(";
           PrintExpression(e->u.e.l, scope, str);
           str += " )";
         }
