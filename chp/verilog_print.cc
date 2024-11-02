@@ -2,6 +2,9 @@
 #include <act/act.h>
 #include <act/passes/booleanize.h>
 #include <string>
+#include <map>
+#include <vector>
+#include <algorithm>
 #include <math.h>
 
 #include "state_machine.h"
@@ -9,7 +12,10 @@
 namespace fpga {
 
 FILE *output_file = stdout;
+FILE *func_file = stdout;
 static ActBooleanizePass *BOOL = NULL;
+
+std::map<int,std::vector<int>> trunc_func_tracker;
 
 void get_module_name (Process *p, std::string &str) {
 
@@ -91,6 +97,33 @@ void print_array_ref (ActId *id, StateMachine *scope, std::string &str) {
   } 
 
   return;
+}
+
+bool NeedTruncFunc(int from, int to) {
+
+  if (trunc_func_tracker.find(from) != trunc_func_tracker.end()) {
+    std::vector tmp = trunc_func_tracker[from];
+    if (std::find(tmp.begin(),tmp.end(),to) != tmp.end()) {
+      return false;
+    }
+  }
+
+  trunc_func_tracker[from].push_back(to);
+
+  return true;
+}
+
+void PrintTruncFunc(int from, int to) {
+  std::string func;
+  std::string s_from = std::to_string(from);
+  std::string s_to = std::to_string(to);
+  std::string func_name = "truncate_" + s_from + "_to_" + s_to;
+  func = "function [" + s_to + "-1:0] " + func_name + ";\n";
+  func = func + "  input [" + s_from + "-1:0] in;\n  begin\n";
+  func = func + "    " + func_name + " = in[" + s_from + "-1:" + s_to + "];\n";
+  func = func + "  end\n";
+  func += "endfunction\n\n";
+  fprintf(func_file,"%s",func.c_str());
 }
 
 int GetExprResWidth (Expr *e, StateMachine *scope) {
@@ -499,16 +532,22 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_BUILTIN_INT): {
+      int tmp1, tmp2;
       if (e->u.e.r) {
         if (e->u.e.l->type == E_INT || e->u.e.l->type == E_VAR) {
           str.pop_back();
           PrintExpression(e->u.e.l, scope, str);
           return;
         } else {
+          tmp1 = GetExprResWidth(e->u.e.l, scope),e->u.e.r->u.ival.v;
+          tmp2 = e->u.e.r->u.ival.v;
+          if (NeedTruncFunc(tmp1,tmp2)) {
+            PrintTruncFunc(tmp1,tmp2);
+          }
           str += "truncate_";
-          str += std::to_string(GetExprResWidth(e->u.e.l, scope));
+          str += std::to_string(tmp1);
           str += "_to_";
-          str += std::to_string(e->u.e.r->u.ival.v);
+          str += std::to_string(tmp2);
           str += "(";
           PrintExpression(e->u.e.l, scope, str);
           str += " )";
@@ -1539,16 +1578,23 @@ void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
 
   ActPass *apb = a->pass_find("booleanize");
   BOOL = dynamic_cast<ActBooleanizePass *>(apb);
+  std::string mod_path;
+  mod_path = path + "/func.v";
+  func_file = fopen(mod_path.c_str(), "w");
   for (auto n = hd; n; n = n->GetNext()) {
     if (n->GetPrs() == 1) { continue; }
     std::string mod_name;
     get_module_name(n->GetProc(),mod_name);
-    std::string mod_path = path + "/" + mod_name + ".v";
+    mod_path = path + "/" + mod_name + ".v";
     output_file = fopen(mod_path.c_str(),"w");
     if (!n->GetPar()) {
       n->PrintVerilogHeader(sv);
     }
+    if (!n->GetChan()) {
+      fprintf(output_file, "`include \"func.v\"\n\n");
+    }
     n->PrintVerilog();
+    fclose(func_file);
     fclose(output_file);
   }
   for (auto n = ghd; n; n = n->GetNext()) {
