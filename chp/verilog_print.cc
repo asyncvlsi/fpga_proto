@@ -549,16 +549,20 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
         } else {
           tmp1 = GetExprResWidth(e->u.e.l, scope),e->u.e.r->u.ival.v;
           tmp2 = e->u.e.r->u.ival.v;
-          if (NeedResizeFunc(tmp1,tmp2)) {
-            PrintResizeFunc(tmp1,tmp2);
+          if (tmp1 != tmp2) {
+            if (NeedResizeFunc(tmp1,tmp2)) {
+              PrintResizeFunc(tmp1,tmp2);
+            }
+            str += "resize_";
+            str += std::to_string(tmp1);
+            str += "_to_";
+            str += std::to_string(tmp2);
+            str += "(";
+            PrintExpression(e->u.e.l, scope, str);
+            str += " )";
+          } else {
+            PrintExpression(e->u.e.l, scope, str);
           }
-          str += "resize_";
-          str += std::to_string(tmp1);
-          str += "_to_";
-          str += std::to_string(tmp2);
-          str += "(";
-          PrintExpression(e->u.e.l, scope, str);
-          str += " )";
         }
       } else {
         PrintExpression(e->u.e.l, scope, str);
