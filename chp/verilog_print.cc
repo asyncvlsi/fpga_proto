@@ -102,8 +102,9 @@ void print_array_ref (ActId *id, StateMachine *scope, std::string &str) {
 bool NeedResizeFunc(int from, int to) {
 
   if (resize_func_tracker.find(from) != resize_func_tracker.end()) {
-    std::vector tmp = resize_func_tracker[from];
-    if (std::find(tmp.begin(),tmp.end(),to) != tmp.end()) {
+    if (std::find(resize_func_tracker[from].begin(),
+                  resize_func_tracker[from].end(),to) != 
+                    resize_func_tracker[from].end()) {
       return false;
     }
   }
@@ -175,7 +176,10 @@ int GetExprResWidth (Expr *e, StateMachine *scope) {
       return 1;
       break;
     case (E_QUERY):
-      return GetExprResWidth(e->u.e.r->u.e.l, scope);
+      l = GetExprResWidth(e->u.e.r->u.e.l, scope);
+      r = GetExprResWidth(e->u.e.r->u.e.r, scope);
+      if (l > r) return l;
+      else return r;
       break;
     case (E_LPAR): 
     case (E_RPAR):
