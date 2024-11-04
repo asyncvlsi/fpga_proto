@@ -1014,7 +1014,7 @@ Condition *process_semi (
       if (li == list_first(l) || 
           (((act_chp_lang_t *)(list_value(list_first(l))))->type == ACT_CHP_SKIP ||
            ((act_chp_lang_t *)(list_value(list_first(l))))->type == ACT_CHP_FUNC )
-           & first_skip == 0) {
+	  && (first_skip == 0)) {
         first_skip = 1;
         if (par_chp == ACT_CHP_INF_LOOP) {
           tmp_com->type = 2;
@@ -1068,7 +1068,7 @@ Condition *process_semi (
 
   //Create termination condition (last valid child term condition) 
   Condition *term_cond = new Condition(term_com, sm->GetCCN(), sm);
-  if ((opt >= 2 & par_chp == ACT_CHP_LOOP) | par_chp == ACT_CHP_INF_LOOP) {
+  if ((opt >= 2 && (par_chp == ACT_CHP_LOOP)) || (par_chp == ACT_CHP_INF_LOOP)) {
     tmp_com->c.push_back(term_cond);
   }
   sm->AddCondition(term_cond);
@@ -1860,7 +1860,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
 
   //Static can be reg or wire
   phash_iter_init(bnl->cH, &hi);
-  while (hb = phash_iter_next(bnl->cH, &hi)) {
+  while ((hb = phash_iter_next(bnl->cH, &hi))) {
     act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
 //    if (bv->isglobal == 1) { continue; }
     is_port = bv->ischpport;
@@ -1903,7 +1903,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
 
   //Dynamic is always register
   phash_iter_init(bnl->cdH, &hi);
-  while (hb = phash_iter_next(bnl->cdH, &hi)) {
+  while ((hb = phash_iter_next(bnl->cdH, &hi))) {
     act_dynamic_var_t *dv = (act_dynamic_var_t *)hb->v;
     id = dv->id;
     vx = id->toid()->rootVx(cs);

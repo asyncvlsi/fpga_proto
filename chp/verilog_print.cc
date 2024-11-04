@@ -551,7 +551,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
           PrintExpression(e->u.e.l, scope, str);
           return;
         } else {
-          tmp1 = GetExprResWidth(e->u.e.l, scope),e->u.e.r->u.ival.v;
+          tmp1 = GetExprResWidth(e->u.e.l, scope);
           tmp2 = e->u.e.r->u.ival.v;
           if (tmp1 != tmp2) {
             if (NeedResizeFunc(tmp1,tmp2)) {
@@ -1423,7 +1423,7 @@ void StateMachine::PrintVerilog() {
     i->PrintVerilog(); 
   }
  
-  if (!par & number == 0) {
+  if (!par && (number == 0)) {
     fprintf(output_file, "\nendmodule\n\n");
   }
 

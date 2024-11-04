@@ -19,9 +19,8 @@
 #
 #-------------------------------------------------------------------------
 EXE=chp2fpga.$(EXT)
-
+CPPSTD=c++17
 TARGETS=$(EXE)
-TARGETINCS=state_machine.h data_path.h
 TARGETINCSUBDIR=act
 
 OBJS=main.o state_machine.o build_machine.o verilog_print.o data_path.o

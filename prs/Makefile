@@ -21,7 +21,6 @@
 EXE=prs2fpga.$(EXT)
 
 TARGETS=$(EXE)
-TARGETINCS=graph.h debug.h 
 TARGETINCSUBDIR=act
 
 OBJS=main.o build_graph.o graph.o arb.o timing.o print.o multidr.o debug.o
@@ -31,6 +30,6 @@ SRCS=$(OBJS:.o=.cc)
 include $(ACT_HOME)/scripts/Makefile.std
 
 $(EXE): $(OBJS) $(ACTPASSDEPEND) $(TARGETINCS)
-	$(CXX) $(CFLAGS) $(OBJS) -o $(EXE) $(LIBACTPASS) -g
+	$(CXX) $(CFLAGS) $(OBJS) -o $(EXE) $(LIBACTPASS)
 
 -include Makefile.deps
