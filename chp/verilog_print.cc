@@ -13,7 +13,7 @@ namespace fpga {
 
 FILE *output_file = stdout;
 FILE *func_file = stdout;
-static ActBooleanizePass *BOOL = NULL;
+extern ActBooleanizePass *BOOL;
 
 std::map<int,std::vector<int>> resize_func_tracker;
 
@@ -256,7 +256,7 @@ int GetExprResWidth (Expr *e, StateMachine *scope) {
       } else {
         r = l;
       }
-      return l-r;
+      return l-r+1;
       break;
     }
     case (E_COMPLEMENT):
@@ -759,7 +759,7 @@ void Variable::PrintVerilog() {
 
   char tmp[1024];
   if (type < 4) 
-   id->toid()->sPrint(tmp, 1024);
+   id->sPrint(tmp, 1024);
 
   std::string var;
 
@@ -781,7 +781,7 @@ void Variable::PrintVerilog() {
     var = var + "[" + std::to_string(dim[i]-1) + ":0]";
   }
   var += " ;\n";
-  
+
   if (ischan != 0) {
     if (type == 0 || type == 3) { var += "reg\t\\"; } 
     else { var += "wire\t\\"; }
@@ -806,16 +806,17 @@ void Variable::PrintVerilog() {
     init += "end\n\n";
   }
 
-  if (id) {
-    char tmp1[1024];
-    act_connection *ct = id;
-    while (ct->next != id) {
-      ct = ct->next;
-      ct->toid()->sPrint(tmp1,1024);
-      var = var + "wire\t\\" + tmp1 + " ;\n";
-      var = var + "assign \\" + tmp1 + " = \\" + tmp + " ;\n\n";
-    }
-  }
+// FIXME: Do I need this?
+ // if (con) {
+ //   char tmp1[1024];
+ //   act_connection *ct = con;
+ //   while (ct->next != con) {
+ //     ct = ct->next;
+ //     ct->toid()->sPrint(tmp1,1024);
+ //     var = var + "wire\t\\" + tmp1 + " ;\n";
+ //     var = var + "assign \\" + tmp1 + " = \\" + tmp + " ;\n\n";
+ //   }
+ // }
 
   fprintf(output_file, "%s", var.c_str());
   var.clear();
@@ -914,10 +915,10 @@ void Port::PrintVerilog() {
 
   std::string port;
   char tmp[1024];
-  connection->toid()->sPrint(tmp,1024);
+  port_name->sPrint(tmp,1024);
 
   if (dir == 0) {
-    if (ischan != 0) {
+    if (ischan != 0 && type == 0) {
       if (reg) { port = port + "\t,output reg\t\\" + tmp; } 
       else { port = port + "\t,output\t\\" + tmp; }
       port = port + "_valid\n\t,input\t\t\\" + tmp + "_ready\n";
@@ -927,7 +928,7 @@ void Port::PrintVerilog() {
       else { port = port + "\t,output\t"; }
     }
   } else {
-    if (ischan != 0)  {
+    if (ischan != 0 && type == 0)  {
       if (reg) { port = port + "\t,output reg\t\\" + tmp; } 
       else {port = port + "\t,output\t\\" + tmp; }
       port = port + "_ready\n\t,input\t\t\\" + tmp + "_valid\n";
@@ -1076,6 +1077,56 @@ void CHPData::PrintVerilogAssignment(std::string &str) {
   return;
 }
 
+void CHPData::PrintVerilogRHS(std::string &str) {
+  std::string ch = "";
+  printed = 1;
+  if (!scope->GetProc()) {
+    get_chan_name(scope->GetChan(), ch);
+  }
+
+  char tmp[1024];
+
+  if (type == 0) {
+    PrintExpression(u.assign.e, scope, str);
+  } else if (type == 1 || type == 6) {
+    str +=  "\\";
+    if (scope->GetChan()) {
+      str += ch;
+    } else {
+      u.recv.chan->sPrint(tmp,1024);
+      str += tmp;
+    }
+  } else if (type == 2 || type == 5) {
+    if (scope->GetChan()) {
+      u.recv.chan->sPrint(tmp,1024);
+      str += tmp;
+    } else {
+      PrintExpression(u.send.se, scope, str);
+    }
+  } else if (type == 7) {
+    str += "\\";
+    u.send_struct.chan->sPrint(tmp,1024);
+    str += tmp;
+  }
+  str += " ;\n";
+
+  return;
+}
+
+void CHPData::PrintVerilogIfCond(std::string &da)
+{
+
+  if (type == 1 || type == 6) {
+    u.recv.up_cond->PrintVerilogDeclRaw(da);
+  } else if (type == 2 || type == 5) {
+    u.send.up_cond->PrintVerilogDeclRaw(da);
+  } else {
+    cond->PrintVerilogDeclRaw(da);
+  }
+
+  return;
+}
+
 //f = 0 - if
 //f = 1 - else if
 //f = 2 - else
@@ -1098,25 +1149,20 @@ void CHPData::PrintVerilog(int f, std::string &da)
     } else {
       cond->PrintVerilogDeclRaw(da);
     }
-    da += ")";
-    da += " begin\n";
+    da += ") begin\n";
     PrintVerilogAssignment(da);
     da += "end ";
   }
   if (f == 2) {
     id->sPrint(tmp, 1024);
     if (scope->GetChan()) { get_chan_name(scope->GetChan(), ch); }
-    da += "else begin\n";
-    da += "\t\\";
+    da += "else begin\n\t";
     if (tmp == self) {
-      da = da + "recv_data" + " <= \\";
-      da = da + "recv_data" + " ;\n";
+      da = da + "\\recv_data" + " <= \\recv_data ;\n";
     } else if (tmp == chan) {
-      da = da + ch + " <= \\";
-      da = da + ch + " ;\n";
+      da = da + "\\" + ch + " <= \\" + ch + " ;\n";
     } else {
-      da = da + tmp + " <= \\";
-      da = da + tmp + " ;\n";
+      da = da + "\\" + tmp + " <= \\" + tmp + " ;\n";
     }
     da += "end";
   }
@@ -1130,59 +1176,89 @@ void CHPData::PrintVerilog(int f, std::string &da)
   return;
 }
 
-void StateMachine::PrintVerilogData()
-{
+void StateMachine::PrintVerilogData() {
   int ef = 0;
   std::string da;
   char tmp[1024]; 
 
-  for (auto id : data) {
-    act_dynamic_var_t *dv = NULL;
-    if (p) {
-      act_boolean_netlist_t *bnl;
-      bnl = BOOL->getBNL(p);
-      dv = BOOL->isDynamicRef(bnl, id.first->toid());
-    }
-    
-    if (id.second[0]->GetType() == 2) {
+  for (auto id : test_data) {
+
+    if (id.second[0]->GetType() == 2 || id.second[0]->GetType() == 7) {
       da += "always @(*)\n";
     } else {
       da += "always @(posedge \\clock )\n";
     }
   
-    if (!dv) {
-      std::string self = "self";
-      std::string ch = "";
-      id.first->toid()->sPrint(tmp,1024);
-      if (tmp == self) {
-        da = da + "if (\\reset ) begin\n\t\\" + "recv_data" + " <= 0;\nend ";
-      } else {
-        da = da + "if (\\reset ) begin\n\t\\" + tmp + " <= 0;\nend ";
-      }
-    } 
+    da = da + "if (\\reset ) begin\n\t\\" + id.first + " <= 0;\nend ";
+
     for (auto dd : id.second) {
-      if (!dv) {
-        dd->PrintVerilog(1, da);
-      } else {
-        dd->PrintVerilog(ef, da);
-        ef = 1;
-      }
-      if (dd == id.second[id.second.size()-1] && id.second[0]->GetType() != 2) {
-        if (!dv) { dd->PrintVerilog(2, da); }
-      } else if (dd == id.second[id.second.size()-1] && id.second[0]->GetType() == 2) {
-        id.second[0]->PrintVerilog(3,da);
+      da += "else if ( ";
+      dd->PrintVerilogIfCond(da);
+      da += ") begin\n";
+      da += "\t\\" + id.first + " <= ";
+      dd->PrintVerilogRHS(da);
+      da += "end ";
+
+      if (dd == id.second[id.second.size()-1]) {
+        if (id.second[0]->GetType() != 2 && id.second[0]->GetType() != 7) {
+          da += "else begin\n";
+          da += "\t\\" + id.first + " <= \\" + id.first + " ;\n";
+          da += "end\n";
+        } else {
+          da += "else begin\n";
+          da += "\t\\" + id.first + " <= ";
+          id.second[0]->PrintVerilogRHS(da);
+          da += "end\n";
+        }
       }
     }
-    ef = 0;
-
     fprintf(output_file, "%s\n\n", da.c_str());
     da.clear();
   }
 
+  for (auto id : test_dyn_data) {
+ 
+    if (id.second[0]->GetType() == 2 || id.second[0]->GetType() == 7) {
+      da += "always @(*)\n";
+    } else {
+      da += "always @(posedge \\clock )\n";
+    }
+
+    for (auto dd : id.second) {
+      if (ef == 0) {
+        da += "if (";
+        ef = 1;
+      } else {
+        da += "else if (";
+      }
+      dd->PrintVerilogIfCond(da);
+      da += ") begin\n";
+      da += "\t\\";
+      std::string dv_id = "";
+      print_array_ref(dd->GetId(),this,dv_id);
+      da += dv_id + " <= ";
+      dd->PrintVerilogRHS(da);
+      da += "end\n";
+      if (dd == id.second[id.second.size()-1]) {
+        if (id.second[0]->GetType() == 2) {
+          da += "else begin\n";
+          id.second[0]->PrintVerilogRHS(da);
+          da += "end\n";
+        }
+        ef = 0;
+      }
+    }
+ 
+    fprintf(output_file, "%s\n\n", da.c_str());
+    da.clear();
+  }
+
+
+
   return;
 }
 
-void CHPData::PrintVerilogHSlhs(std::string &str, int func) {
+void CHPData::GetSuffix(std::string &str, int func) {
 
   Scope *s = act_scope->CurScope();
   act_connection *cid;
@@ -1194,23 +1270,16 @@ void CHPData::PrintVerilogHSlhs(std::string &str, int func) {
   } else if (type == 2 || type == 4 || type == 5) {
     cid = id->Canonical(s);
   }
-  
-  if (type == 1 || type == 6) {
-    u.recv.chan->sPrint(tmp,1024);
-  } else if (type == 2 || type == 4 || type == 5) {
-    id->sPrint(tmp,1024);
-  }
-  str += tmp;
   if (scope->IsPort(cid) == 0 && func == 0) {
-    str += "_valid ";
+    str = "_valid";
   } else if (scope->IsPort(cid) == 0 && func == 1) {
-    str += "_ready ";
+    str = "_ready";
   } else if (scope->IsPort(cid) == 1) {
-    str += "_valid ";
+    str = "_valid";
   } else if (scope->IsPort(cid) == 2) {
-    str += "_ready ";
+    str = "_ready";
   } else {
-    str += "Whaaaat?!" + std::to_string(scope->IsPort(cid)) + "\n";
+    str = "Whaaaat?!" + std::to_string(scope->IsPort(cid)) + "\n";
   }
 
   return;
@@ -1231,19 +1300,27 @@ void StateMachine::PrintVerilogDataHS()
 {
   std::string hs;
 
-  for (auto id : hs_data) {
-    if (id.second[0]->GetType() == 5 || id.second[0]->GetType() == 6) {
+  std::string suf0 = "";
+  std::string suf1 = "";
+
+  for (auto id : test_hs_data) {
+    id.second[0]->GetSuffix(suf0, 0);
+    id.second[0]->GetSuffix(suf1, 1);
+    if (id.second[0]->GetType() == 5 || 
+        id.second[0]->GetType() == 6) {
       int func = id.second[0]->GetType() == 5 ? 0 : 1;
       for (auto i = 0; i < 2; i++) {
-        hs += "always @(posedge clock)\nif (reset) begin\n\t\\";
-        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += "always @(posedge \\clock )\nif (reset) begin\n\t\\";
+        hs += id.first;
+        hs += func == 0 ? suf0 : suf1;
         hs += " <= 0 ;\n";
         hs += "end else if (\\";
-        id.second[0]->PrintVerilogHSlhs(hs, 0);
-        hs += "& \\";
-        id.second[0]->PrintVerilogHSlhs(hs, 1);
-        hs += ") begin\n\t\\";
-        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += id.first + suf0;
+        hs += " & \\";
+        hs += id.first + suf1;
+        hs += " ) begin\n\t\\";
+        hs += id.first;
+        hs += func == 0 ? suf0 : suf1;
         hs += " <= 0 ;\n";
         for (auto dd : id.second) {
           if (func == 1 && dd->GetType() == 5 || 
@@ -1253,22 +1330,27 @@ void StateMachine::PrintVerilogDataHS()
           hs += "end else if (";
           dd->PrintVerilogHSrhs(hs);
           hs += ") begin\n\t\\";
-          id.second[0]->PrintVerilogHSlhs(hs, func);
+          hs += id.first;
+          hs += func == 0 ? suf0 : suf1;
           hs += " <= 1'b1 ;\n";
         }
         hs += "end else begin\n\t\\";
-        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += id.first;
+        hs += func == 0 ? suf0 : suf1;
         hs += " <= \\";
-        id.second[0]->PrintVerilogHSlhs(hs, func);
+        hs += id.first;
+        hs += func == 0 ? suf0 : suf1;
         hs += " ;\nend\n\n";
         func = id.second[0]->GetType() == 5 ? 1 : 0;
       }
     } else {
       hs += "always @(*) begin\n\t\\";
-      id.second[0]->PrintVerilogHSlhs(hs, 0);
+      hs += id.first + suf0;
       hs += " <= (";
       for (auto dd : id.second) {
-        if (dd->GetType() == 1 || dd->GetType() == 2) {
+        if (dd->GetType() == 1 || 
+            dd->GetType() == 2 ||
+            dd->GetType() == 7) {
           dd->PrintVerilogHSrhs(hs);
           if (dd != id.second[id.second.size()-1]) { hs += " | "; }
         }
@@ -1286,7 +1368,7 @@ void Port::PrintName(std::string &str){
 
   char tmp[1024];
 
-  connection->toid()->sPrint(tmp,1024);
+  port_name->sPrint(tmp,1024);
   str += tmp;
 
   return;
@@ -1327,7 +1409,7 @@ void StateMachineInst::PrintVerilog(){
       inst += " (\\";
       ports[i]->PrintName(inst);
       inst += " )\n";
-    }
+    } 
     if (ports[i]->GetChan() != 0) {
       inst += "\t,.\\";
       sm->GetPorts()[i]->PrintName(inst);
@@ -1341,6 +1423,7 @@ void StateMachineInst::PrintVerilog(){
       inst += "_valid )\n";
     }
   }
+
   if (ports.size() < sm->GetPorts().size()) {
     for (auto i = ports.size(); i < sm->GetPorts().size(); i++) {
       inst += "\t,.\\";
@@ -1590,10 +1673,8 @@ void StateMachine::PrintAsGlue(std::string &ch_name) {
   return;
 }
 
-void CHPProject::PrintVerilog(Act *a, int sv, std::string &path) {
+void CHPProject::PrintVerilog(int sv, std::string &path) {
 
-  ActPass *apb = a->pass_find("booleanize");
-  BOOL = dynamic_cast<ActBooleanizePass *>(apb);
   std::string mod_path;
   mod_path = path + "/func.v";
   func_file = fopen(mod_path.c_str(), "w");
@@ -1682,7 +1763,7 @@ arb += "module rr\n";
 arb += "#(\n";
 arb += "\tparameter W = 4\n";
 arb += ")(\n";
-arb += "\t input\t\t\t\tclock\n";
+arb += "\t input\t\t\t\t\\clock\n";
 arb += "\t,input\t\t\t\treset\n";
 arb += "\t,input\t[2**W-1:0]\treq\n";
 arb += "\t,output\t[2**W-1:0]\tgnt\n";
@@ -1698,7 +1779,7 @@ arb += "wire\t[2**W-1:0]\tth_gnt;\n";
 arb += "\n";
 arb += "wire\t[2**W-1:0]\treq_masked;\n";
 arb += "\n";
-arb += "always @(posedge clock)\n";
+arb += "always @(posedge \\clock )\n";
 arb += "if (reset) mask <= 0;\n";
 arb += "else       mask <= th_gnt; \n";
 arb += "\n";

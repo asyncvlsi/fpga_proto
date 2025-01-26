@@ -2,10 +2,14 @@
 #include <unistd.h>
 #include <filesystem>
 #include <act/act.h>
-#include <act/passes/booleanize.h>
-#include <act/passes/finline.h>
 
 #include "state_machine.h"
+
+namespace fpga {
+  Act *a;
+  ActCHPFuncInline *INLINE;
+  ActBooleanizePass *BOOL;
+}
 
 void logo () {
 
@@ -42,7 +46,6 @@ void usage () {
 
 int main (int argc, char **argv) { 
 
-  Act *a = NULL;
   char *proc = NULL;
 
   Act::Init(&argc, &argv);
@@ -110,10 +113,10 @@ int main (int argc, char **argv) {
     fatal_error("Missing process name\n");
   }
  
-  a = new Act(argv[optind]);
-  a->Expand ();
+  fpga::a = new Act(argv[optind]);
+  fpga::a->Expand ();
 
-	Process *p = a->findProcess (proc);
+	Process *p = fpga::a->findProcess (proc);
 
 	if (!p) {
 		fatal_error ("Wrong process name, %s", proc);
@@ -123,16 +126,16 @@ int main (int argc, char **argv) {
 		fatal_error ("Process '%s' is not expanded.", proc);
 	}
 
-	ActCHPFuncInline *INLINE = new ActCHPFuncInline (a);
-	Assert (INLINE->run(p), "Function inline pass failed");
-	INLINE->run(p);
+	fpga::INLINE = new ActCHPFuncInline (fpga::a);
+	Assert (fpga::INLINE->run(p), "Function inline pass failed");
+	fpga::INLINE->run(p);
 
-	ActBooleanizePass *BOOL = new ActBooleanizePass (a);
-	Assert (BOOL->run(p), "Booleanize pass failed");
+	fpga::BOOL = new ActBooleanizePass (fpga::a);
+	Assert (fpga::BOOL->run(p), "Booleanize pass failed");
 
   fpga::CHPProject *cp;
 
-  cp = fpga::build_machine(a,p,opt,proc);
+  cp = fpga::build_machine(p,opt,proc);
   
   if (parb == 1) {
     FILE *arb_file;
@@ -143,7 +146,7 @@ int main (int argc, char **argv) {
     fclose(arb_file);
   }
   
-  cp->PrintVerilog(a, sv, out_path);
+  cp->PrintVerilog(sv, out_path);
 
   printf("OUTPUT FILES ARE STORE IN THE FOLDER: %s\n", out_path.c_str());
 

@@ -28,8 +28,6 @@ ActId *CHPData::GetId() {
 
 CHPData::CHPData() {
   cond = 0;
-  up = 0;
-  dn = 0;
   type = 0;
   id = NULL;
   u.assign.e = NULL;
@@ -39,8 +37,6 @@ CHPData::CHPData() {
 }
 
 CHPData::CHPData (int type_, 
-            int up_,
-            int dn_,
             Process *act_scope_, 
             StateMachine *scope_, 
             Condition *cond_, 
@@ -49,8 +45,6 @@ CHPData::CHPData (int type_,
             Expr *e_) {
   cond = cond_;
   type = type_;
-  up = up_;
-  dn = dn_;
   id = id_;
   if (type_ == 0) {
     u.assign.e = e_;
@@ -64,8 +58,6 @@ CHPData::CHPData (int type_,
 }
 
 CHPData::CHPData (int type_,
-            int up_,
-            int dn_,
             Process *act_scope_, 
             StateMachine *scope_,
             Condition *cond_, 
@@ -74,11 +66,14 @@ CHPData::CHPData (int type_,
             ActId *rhs_) {
   cond = cond_;
   type = type_;
-  up = up_;
-  dn = dn_;
   id = id_;
-  u.recv.up_cond = up_cond_;
-  u.recv.chan = rhs_;
+  if (type == 7) {
+    u.send_struct.up_cond = up_cond_;
+    u.send_struct.chan = rhs_;
+  } else {
+    u.recv.up_cond = up_cond_;
+    u.recv.chan = rhs_;
+  }
   scope = scope_;
   act_scope = act_scope_;
   printed = 0;
@@ -125,9 +120,24 @@ Port::Port(Port *p){
 	reg = p->reg;
 	root_id = p->root_id;
   connection = p->connection;
+  type = 0;
   o_type = p->o_type;
   owner.sm = p->owner.sm;
   owner.smi = p->owner.smi;
+}
+
+Port::Port(int dir_, int width_, int chan_, int reg_){
+  dir = dir_;
+  width = width_;
+  ischan = chan_;
+	inst = 0;
+	reg = reg_;
+	root_id = NULL;
+  connection = NULL;
+  type = 0;
+  o_type = 0;
+  owner.sm = NULL;
+  owner.smi = NULL;
 }
 
 Port::Port(int dir_, int width_, int chan_, int reg_, 
@@ -139,19 +149,34 @@ Port::Port(int dir_, int width_, int chan_, int reg_,
 	reg = reg_;
 	root_id = rid_;
   connection = c_;
+  type = 0;
   o_type = 0;
   owner.sm = NULL;
   owner.smi = NULL;
 }
 
+Port::Port(int dir_, int width_, int chan_, int reg_, 
+						ValueIdx *rid_, ActId *pn_, act_connection *c_){
+  dir = dir_;
+  width = width_;
+  ischan = chan_;
+	inst = 0;
+	reg = reg_;
+	root_id = rid_;
+  connection = c_;
+  port_name = pn_;
+  type = 0;
+  o_type = 0;
+  owner.sm = NULL;
+  owner.smi = NULL;
+}
 Port::~Port() {}
 
 /*
  *  Variable Class
  */
-ValueIdx *Variable::GetId(){	return vx; }
 int Variable::GetDimNum(){	return dim.size(); }
-act_connection *Variable::GetCon(){	return id; }
+act_connection *Variable::GetCon(){	return con; }
 void Variable::AddDimension(int d) { dim.push_back(d); }
 int Variable::IsChan() { return ischan; }
 int Variable::IsPort() { return isport; }
@@ -161,56 +186,17 @@ Variable::Variable() {
 	ischan = 0;
 	isport = 0;
   isdyn = 0;
-	vx = NULL;
 	id = NULL;
-}
-
-Variable::Variable(int type_, int ischan_) {
-  type = type_;
-	ischan = ischan_;
-	isport = 0;
-  isdyn = 0;
-	vx = NULL;
-	id = NULL;
-}
-
-Variable::Variable(int type_, int ischan_, ValueIdx *vx_) {
-  type = type_;
-	ischan = ischan_;
-	isport = 0;
-  isdyn = 0;
-	vx = vx_;
-	id = NULL;
-}
-
-Variable::Variable(int type_, int ischan_, 
-										ValueIdx *vx_, act_connection *id_) {
-  type = type_;
-	ischan = ischan_;
-	isport = 0;
-  isdyn = 0;
-	vx = vx_;
-	id = id_;
-}
-
-Variable::Variable(int type_, int ischan_, int isport_, 
-										ValueIdx *vx_, act_connection *id_) {
-  type = type_;
-	ischan = ischan_;
-	isport = isport_;
-  isdyn = 0;
-	vx = vx_;
-	id = id_;
 }
 
 Variable::Variable(int type_, int ischan_, int isport_, int isdyn_,
-										ValueIdx *vx_, act_connection *id_) {
+										act_connection *con_, ActId *id_) {
   type = type_;
 	ischan = ischan_;
 	isport = isport_;
   isdyn = isdyn_;
-	vx = vx_;
 	id = id_;
+	con = con_;
 }
 
 }

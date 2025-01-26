@@ -3,6 +3,8 @@
 #include <string>
 #include <string.h>
 #include <act/act.h>
+#include <act/passes/booleanize.h>
+#include <act/passes/finline.h>
 
 #include "data_path.h"
 
@@ -165,7 +167,6 @@ public:
     ports_c.push_back(p_->GetCon());
   };
   int FindPort(act_connection *);
-  Port *RemovePort(int);
 
   void PrintVerilog();
 
@@ -258,7 +259,7 @@ public:
   std::map<act_connection*, std::vector<CHPData *>> GetData() { return data; };
   std::map<act_connection*, std::vector<CHPData *>> GetHSData() { return hs_data; };
   std::vector<Variable *> GetVars();
-  inline Variable *GetVarRaw(act_connection *c) { return vm[c]; };
+//  inline Variable *GetVarRaw(act_connection *c) { return vm[c]; };
   inline int GetVarType(act_connection *c) { return vm[c]->GetType(); };
   std::vector<Port *> GetPorts();
   Process *GetProc();
@@ -267,8 +268,6 @@ public:
   inline int GetType() { return top->GetType(); };
 
   int FindPort(act_connection *);
-  void RemovePort(int);
-  void RemoveInstPortPair(act_connection *c) { _ports.erase(c); }
 
   void PrintParent(StateMachine *, int);
   void PrintScopeVar(StateMachine *, std::string &);
@@ -295,6 +294,9 @@ public:
   int GetDir() { return glue_dir; };
   void AddGlueData(CHPData *d) { glue_data.push_back(d); };
 
+  std::map<std::string, std::vector<CHPData*>> test_hs_data; 
+  std::map<std::string, std::vector<CHPData*>> test_data; 
+  std::map<act_connection *, std::vector<CHPData*>> test_dyn_data; 
 private:
 
   Process *p;
@@ -359,7 +361,7 @@ public:
   void AppendGlue(StateMachine *sm);
 
   void PrintPlain();
-  void PrintVerilog(Act *, int , std::string&);
+  void PrintVerilog(int , std::string&);
 
   StateMachine *Head();
   StateMachine *Next();
@@ -380,6 +382,6 @@ private:
 
 };
 
-CHPProject *build_machine (Act *, Process *, int, char*);
+CHPProject *build_machine (Process *, int, char*);
 
 }

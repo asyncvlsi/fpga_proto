@@ -31,12 +31,26 @@ ACT_CHP_NULL = 18
 
 namespace fpga {
 
-static ActBooleanizePass *BOOL = NULL;
+extern ActBooleanizePass *BOOL;
 FILE *prs_list = NULL;
 
 Condition *traverse_chp(Process*,UserDef*,act_chp_lang_t*,StateMachine*,StateMachine*,StateMachine*,Condition*,int,int);
 static void visit_channel_ports (act_boolean_netlist_t*,Channel*,ActId*,int);
-void get_port_full_id (act_boolean_netlist_t*,InstType*,ActId*,std::vector<ActId*>&);
+void get_full_id (act_boolean_netlist_t*,InstType*,ActId*,std::map<InstType*,std::vector<std::pair<ActId*,int>>>&);
+
+void get_dyn_array_name (ActId *id, StateMachine *scope, std::string &str) {
+
+  str += id->getName();
+  if (id->arrayInfo()) {
+    for (int i = 0; i < id->arrayInfo()->nDims(); i++) {
+      str += " [";
+      PrintExpression(id->arrayInfo()->getDeref(i), scope, str);
+      str += " ]";
+    }
+  } 
+
+  return;
+}
 
 StateMachine *init_state_machine(StateMachine *sm)
 {
@@ -175,11 +189,15 @@ Condition *process_recv (
 
   //Create handshaking condition
   ActId *chan_id = NULL;
+  std::string chan_id_str = "";
   if (!ud) {
     chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
   } else {
     chan_id = chp_lang->u.comm.chan;
   }
+  char chan_tmp[1024];
+  chan_id->sPrint(chan_tmp,1024);
+  chan_id_str = chan_tmp;
   Condition *hs_compl = new_hs_cond(chan_id, sm);
 
   //Create communication completion condition
@@ -202,42 +220,111 @@ Condition *process_recv (
   //Add exit state to the init state
   s->AddNextStateRaw(exit_s, exit_cond);
 
-  //Processing channel by finding its direction
-  //and bitwidth in the booleanize data structure
+  //Processing channel in the normal CHP
   if (!ud) {
     CHPData *d = NULL;
-    act_connection *chan_con;
+    act_connection *chan_con = NULL;
     chan_con = chan_id->Canonical(scope);
-  
+
     ActId *var_id = chp_lang->u.comm.var;
-  
-    act_connection *var_con = NULL;
-    if (var_id) {
-      if (ud) {
-        var_con = var_id->Canonical(scope);
-      } else {
-        if (BOOL->isDynamicRef(bnl, var_id)) {
-          var_con = BOOL->isDynamicRef(bnl, var_id)->id;
-        } else {
-          var_con = var_id->Canonical(scope);
+
+    int data_type = tsm->GetVarType(chan_con) == 3 ? 6 : 1;
+
+    InstType *it1;
+    it1 = chan_id->Canonical(scope)->getvx()->t;
+    //If variable is a structure then process separately
+    //(assuming if var is user type then channel must be same)
+    if (TypeFactory::isUserType(it1)) {
+      d = new CHPData(data_type, proc, tsm, exit_cond,
+                           init_cond, var_id, chan_id);
+      if (var_id) {
+        char var_id_tmp[1024];
+        var_id->sPrint(var_id_tmp,1024);
+        std::string var_id_str = var_id_tmp;
+        tsm->test_data[var_id_str].push_back(d);
+      }
+      tsm->test_hs_data[chan_id_str].push_back(d);
+    } else {
+      Chan *ch_tmp = dynamic_cast<Chan *> (it1->BaseType());
+      InstType *it2 = ch_tmp->datatype();
+      if (TypeFactory::isUserType(it2->BaseType())) {
+        UserDef *ud_tmp = NULL;
+        std::map<InstType *,std::vector<std::pair<ActId *,int>>> chan_id_tmp;
+        ud_tmp = dynamic_cast<UserDef *>(it2->BaseType());
+        get_full_id(bnl,it2,chan_id,chan_id_tmp);
+      
+        //Add one HS condition
+        d = new CHPData(data_type, proc, tsm, exit_cond,
+                             init_cond, var_id, chan_id);
+        tsm->test_hs_data[chan_id_str].push_back(d);
+      
+        if (var_id) {
+          //Collecting var structure members
+          std::map<InstType *,std::vector<std::pair<ActId *,int>>> var_id_tmp;
+          ud_tmp = dynamic_cast<UserDef *>(it2->BaseType());
+          get_full_id(bnl,it2,var_id,var_id_tmp);
+      
+          //For each member in the channel and variable
+          //add one assigment (members stored in the same order)
+          ActId *sub_var_id = NULL;
+          ActId *sub_chan_id = NULL;
+          auto a = var_id_tmp.begin();
+          auto b = chan_id_tmp.begin();
+          char sub_var_tmp[1024];
+          char sub_chan_tmp[1024];
+          for (auto j = 0; j < chan_id_tmp.size(); j++) {
+            for (auto i = 0; i < a->second.size(); i++) {
+              sub_var_id = a->second[i].first;
+              sub_var_id->sPrint(sub_var_tmp,1024);
+              sub_chan_id = b->second[i].first;
+              sub_chan_id->sPrint(sub_chan_tmp,1024);
+              d = new CHPData(data_type, proc, tsm, exit_cond,
+                                    init_cond, sub_var_id, sub_chan_id);
+              std::string sub_var_str = sub_var_tmp;
+              std::string sub_chan_str = sub_chan_tmp;
+              tsm->test_data[sub_var_str].push_back(d);
+            }
+            a++;
+            b++;
+          }
         }
+      } else {
+        chan_con = chan_id->Canonical(scope);
+        char var_id_tmp[1024];
+        std::string var_id_str = "";
+        act_dynamic_var *dv;
+        act_connection *var_con = NULL;
+        if (var_id) {
+          act_dynamic_var *dv = BOOL->isDynamicRef(bnl, var_id);
+          if (dv) {
+            var_con = dv->id;
+          } else {
+            var_id->sPrint(var_id_tmp,1024);
+          }
+          var_id_str = var_id_tmp;
+        }
+        d = new CHPData(data_type, proc, tsm, exit_cond,
+                                      init_cond, var_id, chan_id);
+        if (var_id) {
+          if (dv) {
+            tsm->test_dyn_data[var_con].push_back(d);
+          } else {
+            tsm->test_data[var_id_str].push_back(d);
+          }
+        }
+        tsm->test_hs_data[chan_id_str].push_back(d);
       }
     }
-  
-    int data_type = tsm->GetVarType(chan_con) == 3 ? 6 : 1;
-  
-    d = new CHPData(data_type, 0, 0, proc, tsm, exit_cond,
-                                  init_cond, var_id, chan_id);
-    if (var_id) { tsm->AddData(var_con, d); }
-    tsm->AddHS(chan_con, d);
+  //processing channel in the Channel definition
   } else {
     CHPData *d = NULL;
     ActId *var_id = chp_lang->u.comm.var;
     int data_type = 1;
-    d = new CHPData(data_type, 0, 0, NULL, tsm, exit_cond,
+    d = new CHPData(data_type, NULL, tsm, exit_cond,
                                     init_cond, var_id, chan_id);
     tsm->AddGlueData(d);
   }
+
   //Create return condition when parent
   //machine switches from the current state
   if (pc && par_chp != ACT_CHP_INF_LOOP) {
@@ -293,11 +380,15 @@ Condition *process_send (
 
   //Create handshaking condition
   ActId *chan_id = NULL;
+  std::string chan_id_str = "";
   if (!ud) {
     chan_id = chp_lang->u.comm.chan->Canonical(scope)->toid();
   } else {
     chan_id = chp_lang->u.comm.chan;
   }
+  char chan_tmp[1024];
+  chan_id->sPrint(chan_tmp,1024);
+  chan_id_str = chan_tmp;
   Condition *hs_compl = new_hs_cond(chan_id, sm);
 
   //Create communication completion condition
@@ -332,16 +423,76 @@ Condition *process_send (
     Expr *se = chp_lang->u.comm.e;
   
     int data_type = tsm->GetVarType(chan_con) == 3 ? 5 : 2;
-  
-    d = new CHPData (data_type, 0, 0, proc, tsm, exit_cond,
-                                  init_cond, chan_id, se);
-    if (se) { tsm->AddData(chan_con, d); }
-    tsm->AddHS(chan_con, d);
+
+    bool do_normal = true;
+
+    if (se && se->type == E_VAR) {
+      //Structure over channel
+      InstType *it1 = NULL;
+      it1 = chan_id->Canonical(scope)->getvx()->t;
+      if (!TypeFactory::isUserType(it1)) {
+        Chan *ch_tmp = dynamic_cast<Chan *> (it1->BaseType());
+        InstType *it2 = ch_tmp->datatype();
+        if (TypeFactory::isUserType(it2->BaseType())) {
+          UserDef *ud_tmp = NULL;
+          std::map<InstType *,std::vector<std::pair<ActId *,int>>> chan_id_tmp;
+          ud_tmp = dynamic_cast<UserDef *>(it2->BaseType());
+          get_full_id(bnl,it2,chan_id,chan_id_tmp);
+    
+          ActId *var_id = (ActId *)se->u.e.l;
+          //Add one HS condition
+          d = new CHPData(data_type, proc, tsm, exit_cond,
+                                init_cond, var_id, chan_id);
+
+          tsm->test_hs_data[chan_id_str].push_back(d);
+
+          //Collecting var structure members
+          std::map<InstType *,std::vector<std::pair<ActId *,int>>> var_id_tmp;
+          ud_tmp = dynamic_cast<UserDef *>(it2->BaseType());
+          get_full_id(bnl,it2,var_id,var_id_tmp);
+
+          //For each member in the channel and variable
+          //add one assigment (members stored in the same order)
+          ActId *sub_var_id = NULL;
+          ActId *sub_chan_id = NULL;
+          auto a = var_id_tmp.begin();
+          auto b = chan_id_tmp.begin();
+          char sub_var_tmp[1024];
+          char sub_chan_tmp[1024];
+          for (auto j = 0; j < chan_id_tmp.size(); j++) {
+            for (auto i = 0; i < a->second.size(); i++) {
+              sub_var_id = a->second[i].first;
+              sub_var_id->sPrint(sub_var_tmp,1024);
+              sub_chan_id = b->second[i].first;
+              sub_chan_id->sPrint(sub_chan_tmp,1024);
+              d = new CHPData(7, proc, tsm, exit_cond,
+                                    init_cond, sub_chan_id, sub_var_id);
+              std::string sub_var_str = sub_var_tmp;
+              std::string sub_chan_str = sub_chan_tmp;
+              tsm->test_data[sub_chan_str].push_back(d);
+            }
+            a++;
+            b++;
+          }
+          do_normal = false;
+        }
+      }
+    }
+
+    if (do_normal) {
+      char chan_id_tmp[1024];
+      chan_id->sPrint(chan_id_tmp,1024);
+      chan_id_str = chan_id_tmp;
+      d = new CHPData(data_type, proc, tsm, exit_cond,
+                                    init_cond, chan_id, se);
+      if (se) { tsm->test_data[chan_id_str].push_back(d); }
+      tsm->test_hs_data[chan_id_str].push_back(d);
+    }
   } else {
     CHPData *d = NULL;
     ActId *var_id = chp_lang->u.comm.var;
     int data_type = 2;
-    d = new CHPData(data_type, 0, 0, NULL, tsm, exit_cond,
+    d = new CHPData(data_type, NULL, tsm, exit_cond,
                                     init_cond, chan_id, var_id);
     tsm->AddGlueData(d);
   }
@@ -415,18 +566,38 @@ Condition *process_assign (
   Expr *e = chp_lang->u.assign.e;
 
   act_connection *var_con = NULL;
+  act_dynamic_var_t *dv = NULL;
   if (ud) {
     var_con = var_id->Canonical(scope);
   } else {
-    if (BOOL->isDynamicRef(bnl, var_id)) {
-      var_con = BOOL->isDynamicRef(bnl, var_id)->id;
+    dv = BOOL->isDynamicRef(bnl, var_id);
+    if (dv) {
+      var_con = dv->id;
     } else {
       var_con = var_id->Canonical(scope);
     }
   }
 
-  d = new CHPData(0,0,0, proc, tsm, init_cond, NULL, var_id, e);
-  tsm->AddData(var_con, d);
+  std::string self = "self";
+  char var_id_tmp[1024];
+  std::string var_id_str = "";
+  var_id->sPrint(var_id_tmp,1024);
+  if (self == var_id_tmp) {
+    var_id = new ActId("recv_data",NULL);
+    var_id_str = "recv_data";
+  } else {
+    if (dv) {
+      get_dyn_array_name(var_con->toid(), tsm, var_id_str);
+    }
+    var_id_str = var_id_tmp;
+  }
+
+  d = new CHPData(0, proc, tsm, init_cond, NULL, var_id, e);
+  if (dv) {
+    tsm->test_dyn_data[var_con].push_back(d);
+  } else {
+    tsm->test_data[var_id_str].push_back(d);
+  }
 
   //Create termination condition using an exit state condition
   Condition *term_cond;
@@ -1257,57 +1428,102 @@ act_connection *get_conn_root (act_connection *p) {
   return ret;  
 }
 
-Port *create_port(act_boolean_netlist_t *bnl, act_connection *c, int input, StateMachine *sm, int func) {
+void create_port(act_boolean_netlist_t *bnl, act_connection *c, int input, StateMachine *sm, int func) {
 
   Scope *cs = bnl->p->CurScope();
 
   ActId *tmp_id;
   ValueIdx *tmp_v;
-  act_connection *tmp_c;
+  act_connection *tmp_con;
   unsigned int tmp_d = 0;
   unsigned int tmp_w = 0;
   unsigned int chan = 0;
   ihash_bucket *hb;
   int reg = 1;
 
-  reg = 1;
   tmp_id = c->toid();
   tmp_v = tmp_id->rootVx(cs);
-  tmp_c = tmp_id->Canonical(cs);
+  tmp_con = tmp_id->Canonical(cs);
   tmp_d = input;
-  
-  hb = ihash_lookup(bnl->cH, (long)tmp_c);
+
+  hb = ihash_lookup(bnl->cH, (long)tmp_con);
   act_booleanized_var_t *bv;
 
   if (hb) {
     bv = (act_booleanized_var_t *)hb->v;
 
     if (func == 0) {
-      if (bv->usedchp == 0) { return NULL; } 
-//      if (bv->isfragmented == 0) { return NULL; }
+      if (bv->usedchp == 0) { return; } 
       tmp_w = bv->width;
       chan = bv->ischan;
     } else {
-      if (bv->used == 0) { return NULL; }
+      if (bv->used == 0) { return; }
       tmp_w = 1;
       chan = 0;
     }
-  }
-  
-  for (auto in : sm->GetInst()){
-    for (auto pp : in->GetPorts()) {
-      if (pp->GetVx() == tmp_v) {
-        reg = 0;
-        break;
+
+    for (auto in : sm->GetInst()) {
+      for (auto pp : in->GetPorts()) {
+        if (pp->GetVx() == tmp_v) {
+          reg = 0;
+          break;
+        }
       }
     }
+
+    InstType *it = bv->id->getvx()->t;
+    Port *p;
+    if (func == 0) {
+      if (TypeFactory::isChanType(it->BaseType())) {
+        // defchan/deftype
+        if (TypeFactory::isUserType(it)) {
+          p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_id, tmp_con);
+          p->SetOwner(sm);
+          sm->AddPort(p);
+        } else {
+          Chan *tmp_chan = dynamic_cast<Chan*>(it->BaseType());
+          auto it1 = tmp_con->getvx()->t;
+          // chan(user type)
+          if (TypeFactory::isUserType(tmp_chan->datatype())) {
+            auto it2 = tmp_chan->datatype()->BaseType();
+            UserDef *ud_tmp = dynamic_cast<UserDef *>(it2);
+            std::map<InstType *,std::vector<std::pair<ActId *,int>>> port_id_tmp;
+            get_full_id(bnl,tmp_chan->datatype(),tmp_id,port_id_tmp);
+            Port *p = new Port(tmp_d, 0, chan, reg, tmp_v, tmp_id, tmp_con);
+            p->SetOwner(sm);
+            sm->AddPort(p);
+            for (auto id : port_id_tmp) {
+              for (auto pp : id.second) {
+                tmp_id = pp.first;
+                tmp_v = pp.first->rootVx(cs);
+                tmp_w = pp.second;
+                Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_id, tmp_con);
+                p->SetType(1);
+                p->SetOwner(sm);
+                sm->AddPort(p);
+              }
+            }
+          // chan(base type)
+          } else {
+            Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_id, tmp_con);
+            p->SetOwner(sm);
+            sm->AddPort(p);
+          }
+        }
+      // non channel port
+      } else {
+        p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_id, tmp_con);
+        p->SetOwner(sm);
+        sm->AddPort(p);
+      }
+    } else {
+      p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_id, tmp_con);
+      p->SetOwner(sm);
+      sm->AddPort(p);
+    }
   }
-  
-  Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
-  p->SetOwner(sm);
 
-  return p;
-
+  return;
 }
 
 //Adding process ports
@@ -1332,16 +1548,14 @@ void add_ports(act_boolean_netlist_t *bnl, StateMachine *sm){
       if (bnl->chpports[i].c->toid()->isFragmented(bnl->cur)) { continue; }
       act_connection *c = bnl->chpports[i].c;
       int input = bnl->chpports[i].input;
-      Port *p = create_port(bnl, c, input, sm, 0);
-      if (p) { sm->AddPort(p); }
+      create_port(bnl, c, input, sm, 0);
     }
   } else if (lev == ACT_MODEL_PRS && lang->getprs()) {
     for (int i = 0; i < A_LEN(bnl->ports); i++) {
       if (bnl->ports[i].omit == 1) { continue; }
       act_connection *c = bnl->ports[i].c;
       int input = bnl->ports[i].input;
-      Port *p = create_port(bnl, c, input, sm, 1);
-      if (p) { sm->AddPort(p); }
+      create_port(bnl, c, input, sm, 1);
     }
     for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
       tmp_id = bnl->used_globals[i].c->toid();
@@ -1360,8 +1574,9 @@ void add_ports(act_boolean_netlist_t *bnl, StateMachine *sm){
         }
       }
 
-      Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
+      Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_id, tmp_c);
       p->SetOwner(sm);
+
       sm->AddPort(p);
     }
   } else {
@@ -1371,66 +1586,12 @@ void add_ports(act_boolean_netlist_t *bnl, StateMachine *sm){
         if (bnl->chpports[i].c->toid()->isFragmented(bnl->cur)) { continue; }
         act_connection *c = bnl->chpports[i].c;
         int input = bnl->chpports[i].input;
-        Port *p = create_port(bnl, c, input, sm, 0);
-        if (p) { sm->AddPort(p); }
+        create_port(bnl, c, input, sm, 0);
       }
     }
   }
 
   return;
-
-//  for (auto i = 0; i < A_LEN(bnl->chpports); i++) {
-//    if (bnl->chpports[i].omit == 1) { continue; }
-//    reg = 1;
-//    tmp_id = bnl->chpports[i].c->toid();
-//    tmp_v = tmp_id->rootVx(cs);
-//    tmp_c = tmp_id->Canonical(cs);
-//    tmp_d = bnl->chpports[i].input;
-//
-//    hb = ihash_lookup(bnl->cH, (long)tmp_c);
-//    act_booleanized_var_t *bv;
-//
-//    if (hb) {
-//      bv = (act_booleanized_var_t *)hb->v;
-//
-//      tmp_w = bv->width;
-//      chan = bv->ischan;
-//    }
-//
-//    for (auto in : sm->GetInst()){
-//      for (auto pp : in->GetPorts()) {
-//        if (pp->GetVx() == tmp_v) {
-//          reg = 0;
-//          break;
-//        }
-//      }
-//    }
-//
-//    Port *p = new Port(tmp_d, tmp_w, chan, reg, tmp_v, tmp_c);
-//    sm->AddPort(p);
-//  }
-//  for (auto i = 0; i < A_LEN(bnl->used_globals); i++) {
-//    tmp_id = bnl->used_globals[i].c->toid();
-//    tmp_v = tmp_id->rootVx(cs);
-//    tmp_c = tmp_id->Canonical(cs);
-//    tmp_d = 1;
-//    tmp_w = 1;
-//
-//    reg = 1;
-//    for (auto in : sm->GetInst()){
-//      for (auto pp : in->GetPorts()) {
-//        if (pp->GetVx() == tmp_v) {
-//          reg = 0;
-//          break;
-//        }
-//      }
-//    }
-//
-//    Port *p = new Port(tmp_d, tmp_w, 0, reg, tmp_v, tmp_c);
-//    sm->AddPort(p);
-//  }
-//
-//  return;
 }
 
 //Map machine instances to their origins
@@ -1459,10 +1620,15 @@ void map_instances(CHPProject *cp){
   return;
 }
 
-Port *create_inst_port(act_boolean_netlist_t *bnl, act_connection *c, int input, int func) {
+bool create_inst_port(act_boolean_netlist_t *bnl, 
+                       act_connection *c, 
+                       int input, 
+                       StateMachine *sm, 
+                       StateMachineInst *smi, int func) {
 
   Scope *cs = bnl->p->CurScope();
 
+  Port *p;
   ActId *tmp_id;
   ValueIdx *tmp_v;
   act_connection *tmp_c;
@@ -1483,20 +1649,87 @@ Port *create_inst_port(act_boolean_netlist_t *bnl, act_connection *c, int input,
     bv = (act_booleanized_var_t *)hb->v;
 
     if (func == 0) {
-      if (bv->used == 0 && bv->usedchp == 0) { return NULL; }
-      tmp_w = bv->width;
-      chan = bv->ischan;
+      if (bv->used == 0 && bv->usedchp == 0) { return false; }
+      InstType *it = bv->id->getvx()->t;
+  
+      if (TypeFactory::isChanType(it->BaseType())) {
+        if (TypeFactory::isUserType(it)) {
+//          std::map<InstType *,std::vector<std::pair<ActId *,int>>> tmp_ports;
+//          UserDef *ud = dynamic_cast<UserDef *>(it->BaseType());
+//          get_full_id (bnl, it, tmp_id, tmp_ports);
+//          for (auto tmp : tmp_ports) {
+//            for (auto pp : tmp.second) {
+//              tmp_id = pp.first;
+//              tmp_v = pp.first->rootVx(cs);
+//              tmp_w = TypeFactory::bitWidth(tmp.first);
+//tmp_id->Print(stdout);
+//fprintf(stdout," ----\n");
+//              p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
+//              p->SetOwner(smi);
+//              p->SetInst();
+//              smi->AddPort(p);
+//              sm->AddInstPortPair(c,p);
+//            }
+//          }
+          tmp_w = bv->width;
+          chan = bv->ischan;
+          p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
+          p->SetOwner(smi);
+          p->SetInst();
+          smi->AddPort(p);
+          sm->AddInstPortPair(c,p);
+        } else {
+          Chan *tmp_chan = dynamic_cast<Chan*>(it->BaseType());
+          auto it1 = tmp_c->getvx()->t;
+          // chan(user type)
+          if (TypeFactory::isUserType(tmp_chan->datatype())) {
+            auto it2 = tmp_chan->datatype()->BaseType();
+            UserDef *ud_tmp = dynamic_cast<UserDef *>(it2);
+            std::map<InstType *,std::vector<std::pair<ActId *,int>>> port_id_tmp;
+            get_full_id(bnl,tmp_chan->datatype(),tmp_id,port_id_tmp);
+            p = new Port(tmp_d, 0, 1, 0, tmp_v, tmp_id, tmp_c);
+            p->SetOwner(smi);
+            p->SetInst();
+            smi->AddPort(p);
+            sm->AddInstPortPair(c,p);
+            for (auto id : port_id_tmp) {
+              for (auto pp : id.second) {
+                tmp_id = pp.first;
+                tmp_v = pp.first->rootVx(cs);
+                tmp_w = pp.second;
+                p = new Port(tmp_d, tmp_w, 0, 0, tmp_v, tmp_id, tmp_c);
+                p->SetType(1);
+                p->SetOwner(smi);
+                p->SetInst();
+                smi->AddPort(p);
+                sm->AddInstPortPair(c,p);
+              }
+            }
+          // chan(base type)
+          } else {
+            tmp_w = bv->width;
+            chan = bv->ischan;
+            p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
+            p->SetOwner(smi);
+            p->SetInst();
+            smi->AddPort(p);
+            sm->AddInstPortPair(c,p);
+          }
+        }
+      }
     } else {
-      if (bv->used == 0) { return NULL; }
+      if (bv->used == 0) { return false; }
       tmp_w = 1;
       chan = 0;
+      p = new Port(tmp_d,tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
+      p->SetOwner(smi);
+      p->SetInst();
+      smi->AddPort(p);
+      sm->AddInstPortPair(c,p);
     }
   }
  
-  Port *p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_c);
-  p->SetInst();
-
-  return p;
+  return true;
 }
 
 //Adding all instances in the current process
@@ -1508,6 +1741,7 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
   
   StateMachineInst *smi;
 
+  bool ip = true;
   int icport = 0;
   int ipport = 0;
 
@@ -1554,12 +1788,9 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
                   continue; 
                 }
                 act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
-                Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+                create_inst_port(bnl,c,sub->chpports[j].input,sm,smi,0);
                 icport++;
                 if (ip) {
-                  ip->SetOwner(smi);
-                  smi->AddPort(ip);
-                  sm->AddInstPortPair(c,ip);
                   owners[c].insert(smi);
                 }
               }
@@ -1577,12 +1808,9 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
                 if (sub->ports[j].omit == 1) { continue; }
                 act_connection *c = bnl->instports[ipport]->toid()->Canonical(cs);
                 act_connection *tmp = bnl->instports[ipport];
-                Port *ip = create_inst_port(bnl,c,sub->ports[j].input,1);
+                ip = create_inst_port(bnl,c,sub->ports[j].input,sm,smi,1);
                 ipport++;
                 if (ip) {
-                  ip->SetOwner(smi);
-                  smi->AddPort(ip);
-                  sm->AddInstPortPair(c,ip);
                   while (c->parent) {
                     owners[c].insert(smi);
                     c = c->parent;
@@ -1598,12 +1826,9 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
                     continue; 
                   }
                   act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
-                  Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+                  ip = create_inst_port(bnl,c,sub->chpports[j].input,sm,smi,0);
                   icport++;
                   if (ip) {
-                    ip->SetOwner(smi);
-                    smi->AddPort(ip);
-                    sm->AddInstPortPair(c,ip);
                     owners[c].insert(smi);
                   }
                 }
@@ -1630,12 +1855,9 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
               continue; 
             }
             act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
-            Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+            ip = create_inst_port(bnl,c,sub->chpports[j].input,sm,smi,0);
             icport++;
             if (ip) {
-              ip->SetOwner(smi);
-              smi->AddPort(ip);
-              sm->AddInstPortPair(c,ip);
               owners[c].insert(smi);
             }
           }
@@ -1653,12 +1875,9 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
             if (sub->ports[j].omit == 1) { continue; }
             act_connection *c = bnl->instports[ipport]->toid()->Canonical(cs);
             act_connection *tmp = bnl->instports[ipport];
-            Port *ip = create_inst_port(bnl,c,sub->ports[j].input,1);
+            ip = create_inst_port(bnl,c,sub->ports[j].input,sm,smi,1);
             ipport++;
             if (ip) {
-              ip->SetOwner(smi);
-              smi->AddPort(ip);
-              sm->AddInstPortPair(c,ip);
               while (c->parent) {
                 owners[c].insert(smi);
                 c = c->parent;
@@ -1674,12 +1893,9 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
                 continue; 
               }
               act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
-              Port *ip = create_inst_port(bnl,c,sub->chpports[j].input,0);
+              ip = create_inst_port(bnl,c,sub->chpports[j].input,sm,smi,0);
               icport++;
               if (ip) {
-                ip->SetOwner(smi);
-                smi->AddPort(ip);
-                sm->AddInstPortPair(c,ip);
                 owners[c].insert(smi);
               }
             }
@@ -1744,100 +1960,6 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
 
   return;
 }
-//void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm) {
-//
-//  Scope *cs = bnl->p->CurScope();
-//
-//  ActUniqProcInstiter i(cs);
-//  
-//  StateMachineInst *smi;
-//
-//  int iport = 0;
-//
-//  for (i = i.begin(); i != i.end(); i++) {
-//    ValueIdx *vx = *i;
-//    if (BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()))->isempty) {
-//      continue;
-//    }
-//
-//    act_boolean_netlist_t *sub;
-//    sub = BOOL->getBNL (dynamic_cast<Process *>(vx->t->BaseType()));
-//
-//    int ports_exist = 0;
-//    for (int j = 0; j < A_LEN(sub->chpports); j++) {
-//      if (sub->chpports[j].omit == 0) {
-//        ports_exist = 1;
-//        break;
-//      }
-//    }
-//    if (ports_exist == 1) {
-//      if (vx->t->arrayInfo()) {
-//        Arraystep *as = vx->t->arrayInfo()->stepper();
-//        while (!as->isend()) {
-//          if (vx->isPrimary (as->index())) {
-//            Process *p = dynamic_cast<Process *>(vx->t->BaseType());
-//            char *ar = as->string();
-//            std::vector<Port *> ports;
-//            for (auto j = 0; j < A_LEN(sub->chpports); j++){
-//              if (sub->chpports[j].omit == 1) { continue; }
-//              act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-//              ValueIdx *vv = c->toid()->rootVx(cs);
-//
-//              ihash_bucket *hb;
-//              hb = ihash_lookup(bnl->cH, (long)c);
-//              act_booleanized_var_t *bv;
-//              bv = (act_booleanized_var_t *)hb->v;
-//              if (bv->used == 0 && bv->usedchp == 0) { continue; } 
-//
-//              int dir = sub->chpports[j].input;
-//              int width = bv->width;
-//              int ischan = bv->ischan;
-//
-//              Port *ip = new Port(dir,width,ischan,0,vv, c);
-//              ip->SetInst();
-//              ports.push_back(ip);
-//              iport++;
-//              sm->AddInstPortPair(c,ip);
-//            }
-//            smi = new StateMachineInst(p,vx,ar,ports);
-//            sm->AddInst(smi);
-//          }
-//          as->step();
-//        }
-//      } else {
-//        Process *p = dynamic_cast<Process *>(vx->t->BaseType());
-//        char *ar = NULL;
-//        std::vector<Port *> ports;
-//        for (auto j = 0; j < A_LEN(sub->chpports); j++){
-//          if (sub->chpports[j].omit == 1) { continue; }
-//          act_connection *c = bnl->instchpports[iport]->toid()->Canonical(cs);
-//          ValueIdx *vv = c->toid()->rootVx(cs);
-//          
-//          ihash_bucket *hb;
-//          hb = ihash_lookup(bnl->cH, (long)c);
-//          act_booleanized_var_t *bv;
-//          bv = (act_booleanized_var_t *)hb->v;
-//          if (bv->used == 0 && bv->usedchp == 0) { continue; } 
-//          
-//          int dir = sub->chpports[j].input;
-//          int width = bv->width;
-//          int ischan = bv->ischan;
-//          
-//          Port *ip = new Port(dir,width,ischan,0,vv,c);
-//          ip->SetInst();
-//          ports.push_back(ip);
-//          iport++;
-//          sm->AddInstPortPair(c,ip);
-//        }
-//        smi = new StateMachineInst(p,vx,ar,ports);
-//        sm->AddInst(smi);
-//      }
-//    }
-//  }
-//
-//  return;
-//
-//}
 
 void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
 {
@@ -1849,7 +1971,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
   int port = 0;
   int dyn = 0;
   ValueIdx *vx = NULL;
-  act_connection *id = NULL;
+  act_connection *con = NULL;
 
   int is_port = 0;
   int is_i_port = 0;
@@ -1862,18 +1984,17 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
   phash_iter_init(bnl->cH, &hi);
   while ((hb = phash_iter_next(bnl->cH, &hi))) {
     act_booleanized_var_t *bv = (act_booleanized_var_t *)hb->v;
-//    if (bv->isglobal == 1) { continue; }
     is_port = bv->ischpport;
-    id = bv->id->toid()->Canonical(cs);
-    vx = id->toid()->rootVx(cs);
+    con = bv->id->toid()->Canonical(cs);
+    vx = con->getvx();
     ///
     //Channel Type
     if (bv->isint == 0 && bv->ischan == 1) {
       if (bv->ischpport == 0) {
         //Instance interconnection
-        if (tsm->GetInstPorts()[id].size() > 1) { type = 2; }
-        else if (tsm->GetInstPorts()[id].size() == 1 && 
-                  tsm->GetInstPorts()[id][0]->GetDir() == 0) { type = 1; }
+        if (tsm->GetInstPorts()[con].size() > 1) { type = 2; }
+        else if (tsm->GetInstPorts()[con].size() == 1 && 
+                  tsm->GetInstPorts()[con][0]->GetDir() == 0) { type = 1; }
         else { type = 3; }
       } else {
         type = 1;
@@ -1882,7 +2003,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     //Integer Type
     else if (bv->isint == 1 && bv->ischan == 0) {
       if (bv->ischpport == 0) {
-        if (tsm->GetInstPorts()[id].size() > 1) { type = 1; }
+        if (tsm->GetInstPorts()[con].size() > 1) { type = 1; }
         else { type = 0; }
       }
     }
@@ -1896,24 +2017,77 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
       port = bv->ischpport;
     }
     dyn = 0;
-    var = new Variable(type, chan, port, dyn, vx, id);
-    var->AddDimension(bv->width-1);
-    tsm->AddVar(var);
+
+    InstType *it = vx->t;
+    if (TypeFactory::isUserType(it->BaseType())) {
+      UserDef *ud_tmp = dynamic_cast<UserDef *> (it->BaseType());
+      if (chan == 1) {
+      // FIXME: This need to be tested
+        std::map<InstType *,std::vector<std::pair<ActId *,int>>> var_id_tmp;
+        get_full_id(bnl,it,con->toid(),var_id_tmp);
+        var = new Variable(type, chan, port, dyn, con, con->toid());
+        var->AddDimension(0);
+        tsm->AddVar(var);
+        for (auto inst : var_id_tmp) {
+          for (auto var_id : inst.second) {
+            if (type == 3) { type = 0; }
+            var = new Variable(type, 0, port, dyn, con, var_id.first);
+            var->AddDimension(var_id.second);
+            tsm->AddVar(var);
+          }
+        }
+      } else {
+        var = new Variable(type, chan, port, dyn, con, con->toid());
+        var->AddDimension(bv->width-1);
+        tsm->AddVar(var);
+      }
+    } else {
+      if (TypeFactory::isChanType(it->BaseType())) {
+        Chan *ch_tmp = dynamic_cast<Chan *> (it->BaseType());
+        it = ch_tmp->datatype();
+        if (TypeFactory::isUserType(it->BaseType())) {
+          std::map<InstType *,std::vector<std::pair<ActId *,int>>> var_id_tmp;
+          get_full_id(bnl,it,con->toid(),var_id_tmp);
+          for (auto inst : var_id_tmp) {
+            for (auto var_id : inst.second) {
+              if (type == 3) { 
+                var = new Variable(0, 0, port, dyn, con, var_id.first);
+              } else {
+                var = new Variable(type, 0, port, dyn, con, var_id.first);
+              }
+              var->AddDimension(var_id.second);
+              tsm->AddVar(var);
+            }
+          }
+          var = new Variable(type, chan, port, dyn, con, con->toid());
+          var->AddDimension(0);
+          tsm->AddVar(var);
+        } else {
+          var = new Variable(type, chan, port, dyn, con, con->toid());
+          var->AddDimension(bv->width-1);
+          tsm->AddVar(var);
+        }
+      } else {
+        var = new Variable(type, chan, port, dyn, con, con->toid());
+        var->AddDimension(bv->width-1);
+        tsm->AddVar(var);
+      }
+    }
   }
 
   //Dynamic is always register
   phash_iter_init(bnl->cdH, &hi);
   while ((hb = phash_iter_next(bnl->cdH, &hi))) {
     act_dynamic_var_t *dv = (act_dynamic_var_t *)hb->v;
-    id = dv->id;
-    vx = id->toid()->rootVx(cs);
+    con = dv->id;
+    vx = con->toid()->rootVx(cs);
   
     type = 0;
     chan = 0;
     port = 0;
     dyn = 1;
   
-    var = new Variable(type, chan, port, dyn, vx, id);
+    var = new Variable(type, chan, port, dyn, con, con->toid());
   
     var->AddDimension(dv->width-1);
     for (auto i = 0; i < dv->a->nDims(); i++) {
@@ -1953,7 +2127,7 @@ void init_unused_ports (StateMachine *tsm)
       }
     }
     if (used == 0 && p->GetChan()) {
-      CHPData *d = new CHPData(4, 0, 0, tsm->GetProc(), tsm, NULL, NULL, p->GetCon()->toid(), p->GetCon()->toid());
+      CHPData *d = new CHPData(4, tsm->GetProc(), tsm, NULL, NULL, p->GetCon()->toid(), p->GetCon()->toid());
       tsm->AddHS(p->GetCon(), d);
     }
     used = 0;
@@ -1963,7 +2137,9 @@ void init_unused_ports (StateMachine *tsm)
 }
 
 void visit_user_t(act_boolean_netlist_t *bnl, UserDef *ud, ActId *id,
-                    std::vector<ActId *> &ports) {
+                    std::map<InstType *,
+                            std::vector<
+                              std::pair<ActId *,int>>> &ports) {
 
   ActId *tl = id;
   while (tl->Rest()) {
@@ -1974,35 +2150,44 @@ void visit_user_t(act_boolean_netlist_t *bnl, UserDef *ud, ActId *id,
     ActId *port_id = new ActId(ud->getPortName(i));
     InstType *pit = ud->getPortType(i);
     tl->Append(port_id);
-    get_port_full_id(bnl,pit,id,ports);
+    get_full_id(bnl,pit,id,ports);
     tl->prune();
     delete port_id;
   }
   return;
 };
 
-void get_port_full_id (act_boolean_netlist_t *bnl, InstType *it, ActId *id,
-                        std::vector<ActId *> &ports) {
+void get_full_id (act_boolean_netlist_t *bnl, InstType *it, ActId *id,
+                        std::map<InstType *, 
+                                std::vector<
+                                  std::pair<ActId *, int>>> &ports) {
+
+  std::pair<ActId*, int> tmp;
 
   ActId *tl = id;
   while (tl->Rest()) {
     tl = tl->Rest();
   }
 
-  if (TypeFactory::isBoolType(it)) {
+  if (TypeFactory::isBoolType(it) || 
+      TypeFactory::isIntType(it)) {
     if (it->arrayInfo()) {
       Arraystep *as = it->arrayInfo()->stepper();
       while (!as->isend()) {
         Array *a = as->toArray();
         tl->setArray(a);
-        ports.push_back(id->Clone());
+        tmp.first = id->Clone();
+        tmp.second = TypeFactory::bitWidth(it);
+        ports[it].push_back(tmp);
         tl->setArray(NULL);
         delete a;
         as->step();
       }
       delete as;
     } else {
-      ports.push_back(id->Clone());
+      tmp.first = id->Clone();
+      tmp.second = TypeFactory::bitWidth(it);
+      ports[it].push_back(tmp);
     }
   }
   if (TypeFactory::isUserType(it)) {
@@ -2174,11 +2359,11 @@ void create_glue_machine (CHPProject *cp,
                           act_boolean_netlist_t *bnl, InstType *it) {
 
   Channel *ch = dynamic_cast<Channel *> (it->BaseType());
-  std::vector<ActId *> ports;
+  std::map<InstType *,std::vector<std::pair<ActId *, int>>> ports;
   for (auto i = 0; i < ch->getNumPorts(); i++) {
     ActId *port_id = new ActId(ch->getPortName(i));
     InstType *pit = ch->getPortType(i);
-    get_port_full_id(bnl,pit,port_id,ports);
+    get_full_id(bnl,pit,port_id,ports);
   }
 
   for (auto i = 0; i < 2; i++) {
@@ -2191,17 +2376,19 @@ void create_glue_machine (CHPProject *cp,
     var->AddDimension(TypeFactory::bitWidth(it)-1);
     sm->AddVar(var);
     traverse_chp(NULL, ch, chan_chp, sm, sm, NULL, NULL, ACT_CHP_NULL, 0);
-    Port *p = new Port(i == 0 ? 1 : 0,TypeFactory::bitWidth(ch),1,1,NULL,NULL);
+    Port *p = new Port(i == 0 ? 1 : 0,TypeFactory::bitWidth(ch),1,1);
     p->SetId(new ActId(ch->getName()));
     p->SetOwner(sm);
     sm->AddPort(p);
-    for (auto pp : ports) {
-      cp->GetChan()[it->BaseType()].push_back(pp);
-      int dir = ch->chanDir(pp,i) == 1 ? 1 : 0;
-      Port *p = new Port(dir,1,0,1,NULL,NULL);
-      p->SetId(pp);
-      p->SetOwner(sm);
-      sm->AddPort(p);
+    for (auto inst : ports) {
+      for (auto pp : inst.second) {
+        cp->GetChan()[it->BaseType()].push_back(pp.first);
+        int dir = ch->chanDir(pp.first,i) == 1 ? 1 : 0;
+        Port *p = new Port(dir,1,0,1);
+        p->SetId(pp.first);
+        p->SetOwner(sm);
+        sm->AddPort(p);
+      }
     }
     cp->AppendGlue(sm);
     cp->GetGlue()[it->BaseType()] = sm;
@@ -2228,16 +2415,17 @@ void collect_chan (Process *p, CHPProject *cp) {
   ActInstiter itr(cs);
   for (itr = itr.begin(); itr != itr.end(); itr++) {
     ValueIdx *vx = *itr;
-    if (TypeFactory::isUserType(vx->t->BaseType()) &&
-        TypeFactory::isChanType(vx->t->BaseType())) {
-      InstType *it = vx->t;
-      for (auto itt : cp->GetChan()) {
-        if (itt.first == it->BaseType()) { exist = 1; }
-      }
-      if (exist == 0) {
-        create_glue_machine(cp,bnl,it);
-      } else {
-        exist = 0;
+    InstType *it = vx->t;
+    if (TypeFactory::isChanType(it->BaseType())) {
+      if (TypeFactory::isUserType(it->BaseType())) {
+        for (auto itt : cp->GetChan()) {
+          if (itt.first == it->BaseType()) { exist = 1; }
+        }
+        if (exist == 0) {
+          create_glue_machine(cp,bnl,it);
+        } else {
+          exist = 0;
+        }
       }
     }
   }
@@ -2308,7 +2496,7 @@ void traverse_act (Process *p, CHPProject *cp, int opt, char *pn) {
    
     //add ports
     add_ports(bnl, sm);
-   
+
     declare_vars(cs, bnl, sm);
     //run chp traverse to build state machine
     if (lang->getchp()) {
@@ -2322,7 +2510,6 @@ void traverse_act (Process *p, CHPProject *cp, int opt, char *pn) {
     //add ports
     add_ports(bnl, sm);
     sm->SetPrs(); 
-    fprintf(prs_list, "%s\n", p->getName());
     cp->Append(sm);
     return;
   } else {
@@ -2332,7 +2519,8 @@ void traverse_act (Process *p, CHPProject *cp, int opt, char *pn) {
      
       //add ports
       add_ports(bnl, sm);
-     
+
+      // declare vars
       declare_vars(cs, bnl, sm);
       //run chp traverse to build state machine
       if (chp_lang) {
@@ -2350,11 +2538,7 @@ void traverse_act (Process *p, CHPProject *cp, int opt, char *pn) {
   return;
 }
 
-CHPProject *build_machine (Act *a, Process *p, int opt, char *pn) {
-
-  ActPass *apb = a->pass_find("booleanize");
-
-  BOOL = dynamic_cast<ActBooleanizePass *>(apb);
+CHPProject *build_machine (Process *p, int opt, char *pn) {
 
   CHPProject *cp = new CHPProject();
 

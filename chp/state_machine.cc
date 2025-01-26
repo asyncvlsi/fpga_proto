@@ -137,7 +137,7 @@ void StateMachine::AddInst (StateMachineInst *inst_) {
 void StateMachine::AddSize() { size++; }
 void StateMachine::AddKid(StateMachine *sm) { csm.push_back(sm); }
 void StateMachine::AddSib(StateMachine *sm) { ssm.push_back(sm); }
-void StateMachine::AddPort(Port *p_){ 
+void StateMachine::AddPort(Port *p_){
   ports.push_back(p_); 
   ports_c.push_back(p_->GetCon());
 }
@@ -198,14 +198,6 @@ int StateMachine::FindPort(act_connection *c) {
   }
   return -1;
 }
-void StateMachine::RemovePort(int i) {
-
-  ports_c.erase(ports_c.begin()+i);
-  ports.erase(ports.begin()+i);
-
-  return;
-}
-
 
 StateMachine::StateMachine() {
   p = NULL;
@@ -283,14 +275,6 @@ int StateMachineInst::FindPort(act_connection *c) {
     if (ports_c[i] == c) { return i; }
   }
   return -1;
-}
-Port *StateMachineInst::RemovePort(int i) {
-
-  ports_c.erase(ports_c.begin()+i);
-  Port *p_ = ports[i];
-  ports.erase(ports.begin()+i);
-
-  return p_;
 }
 
 StateMachineInst::StateMachineInst(){

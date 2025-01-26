@@ -8,8 +8,8 @@ class CHPData {
 public:
 
   CHPData();
-  CHPData(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, Expr *);
-  CHPData(int, int, int, Process *, StateMachine *, Condition *, Condition *, ActId *, ActId *);
+  CHPData(int, Process *, StateMachine *, Condition *, Condition *, ActId *, Expr *);
+  CHPData(int, Process *, StateMachine *, Condition *, Condition *, ActId *, ActId *);
   ~CHPData();
 
   int GetType();
@@ -20,9 +20,12 @@ public:
 
   void PrintPlain();
   void PrintVerilog(int, std::string&);
-  void PrintVerilogHSlhs(std::string&, int);
+  void GetSuffix(std::string&, int);
   void PrintVerilogHSrhs(std::string&);
   void PrintVerilogAssignment(std::string &);
+
+  void PrintVerilogIfCond(std::string &);
+  void PrintVerilogRHS(std::string &);
 
 private:
 
@@ -36,9 +39,7 @@ private:
             //4 - unused (only reset to 0)
             //5 - internal communication send
             //6 - internal communication recv
-
-  int up; //array slice upper boundary
-  int dn; //array slice lower boundary
+            //7 - send a structure
 
   ActId *id;  //name of the variable assigning to
 
@@ -48,17 +49,23 @@ private:
       Expr *e; 
     } assign;
  
-    //assigning channel value
+    //assigning channel to a variable
     struct {
       Condition *up_cond;
       ActId *chan;
     } recv;
 
-    //assigning expression to the channel
+    //assigning expression to a channel
     struct {
       Condition *up_cond;
       Expr *se;
     } send;
+
+    //assigning variable to a channel
+    struct {
+      Condition *up_cond;
+      ActId *chan;
+    } send_struct;
 
     //assigning function value
     struct {
@@ -78,6 +85,8 @@ public:
 
   Port();
   Port(int, int, int, int, ValueIdx *, act_connection *);
+  Port(int, int, int, int, ValueIdx *, ActId *, act_connection *);
+  Port(int, int, int, int);
   Port(Port *);
   ~Port();
 
@@ -87,6 +96,7 @@ public:
   int GetChan();
   int GetInst();
 
+  void SetType(int t) { type = t; };
   void SetInst();
   void SetCtrlChan();
 
@@ -118,9 +128,12 @@ private:
   int ischan; //0 - no, 1 - yes, 2 - control chan(no data)
   int inst;
   int reg; //0 - wire, 1 - reg
+  int type; //0 - normal, 1 - structure (for channel prints to have
+            // only one hand shake)
 
   ValueIdx *root_id;
   act_connection *connection;
+  ActId *port_name;
 
   //Extra
   int o_type;
@@ -138,15 +151,10 @@ class Variable {
 public:
 
   Variable();
-  Variable(int, int);
-  Variable(int, int, ValueIdx *);
-  Variable(int, int, ValueIdx *, act_connection *);
-  Variable(int, int, int, ValueIdx *, act_connection *);
-  Variable(int, int, int, int, ValueIdx *, act_connection *);
+  Variable(int, int, int, int, act_connection *, ActId *);
   
   void AddDimension(int);
 
-  ValueIdx *GetId();
   act_connection *GetCon();
   int GetDimNum();
   int GetType() { return type; }
@@ -163,14 +171,15 @@ public:
 private:
 
   int type;   //0 - reg, 1 - wire, 2 - inst-inst wire, 3 - internal buffer, 4/5 - glue
+              //6 - internal buffer hs only(for structures)
   int ischan; //0 - no, 1 - yes
   int isport; //0 - no, 1 - yes
   int isdyn;  //0 - no, 1 - yes
 
   std::vector<int> dim; //vector of array dimentions width
 
-  ValueIdx *vx;
-  act_connection *id;  //name
+  act_connection *con;
+  ActId *id;
 
 };
 
