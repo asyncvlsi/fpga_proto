@@ -2055,7 +2055,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
               } else {
                 var = new Variable(type, 0, port, dyn, con, var_id.first);
               }
-              var->AddDimension(var_id.second);
+              var->AddDimension(var_id.second-1);
               tsm->AddVar(var);
             }
           }
