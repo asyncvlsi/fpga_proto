@@ -1409,7 +1409,7 @@ void StateMachineInst::PrintVerilog(){
       inst += " (\\";
       ports[i]->PrintName(inst);
       inst += " )\n";
-    } 
+    }
     if (ports[i]->GetChan() != 0) {
       inst += "\t,.\\";
       sm->GetPorts()[i]->PrintName(inst);

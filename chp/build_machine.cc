@@ -1654,23 +1654,6 @@ bool create_inst_port(act_boolean_netlist_t *bnl,
   
       if (TypeFactory::isChanType(it->BaseType())) {
         if (TypeFactory::isUserType(it)) {
-//          std::map<InstType *,std::vector<std::pair<ActId *,int>>> tmp_ports;
-//          UserDef *ud = dynamic_cast<UserDef *>(it->BaseType());
-//          get_full_id (bnl, it, tmp_id, tmp_ports);
-//          for (auto tmp : tmp_ports) {
-//            for (auto pp : tmp.second) {
-//              tmp_id = pp.first;
-//              tmp_v = pp.first->rootVx(cs);
-//              tmp_w = TypeFactory::bitWidth(tmp.first);
-//tmp_id->Print(stdout);
-//fprintf(stdout," ----\n");
-//              p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
-//              p->SetOwner(smi);
-//              p->SetInst();
-//              smi->AddPort(p);
-//              sm->AddInstPortPair(c,p);
-//            }
-//          }
           tmp_w = bv->width;
           chan = bv->ischan;
           p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
@@ -1716,6 +1699,14 @@ bool create_inst_port(act_boolean_netlist_t *bnl,
             sm->AddInstPortPair(c,p);
           }
         }
+      } else {
+        tmp_w = bv->width;
+        chan = bv->ischan;
+        p = new Port(tmp_d, tmp_w, chan, 0, tmp_v, tmp_id, tmp_c);
+        p->SetOwner(smi);
+        p->SetInst();
+        smi->AddPort(p);
+        sm->AddInstPortPair(c,p);
       }
     } else {
       if (bv->used == 0) { return false; }
@@ -1788,7 +1779,7 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
                   continue; 
                 }
                 act_connection *c = bnl->instchpports[icport]->toid()->Canonical(cs);
-                create_inst_port(bnl,c,sub->chpports[j].input,sm,smi,0);
+                ip = create_inst_port(bnl,c,sub->chpports[j].input,sm,smi,0);
                 icport++;
                 if (ip) {
                   owners[c].insert(smi);
@@ -2003,7 +1994,7 @@ void declare_vars (Scope *cs, act_boolean_netlist_t *bnl, StateMachine *tsm)
     //Integer Type
     else if (bv->isint == 1 && bv->ischan == 0) {
       if (bv->ischpport == 0) {
-        if (tsm->GetInstPorts()[con].size() > 1) { type = 1; }
+        if (tsm->GetInstPorts()[con].size() >= 1) { type = 1; }
         else { type = 0; }
       }
     }
