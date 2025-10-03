@@ -663,20 +663,26 @@ void find_md (graph *g, node *n)
 //to itself because of the very flexible ACT syntax.
 void self_connect(graph *g)
 {
-  std::vector<inst_node *> tmp;
-  std::vector<inst_node *>::iterator tmp_i;
+  std::vector<port *> tmp;
+  int bp = 0; // bi port present in the network
+  int top = 0;
+
   for (auto n = g->hd; n; n = n->next) {
+    if (!n->next) { top = 1; }
     for (auto pair : n->cp) {
       for (auto pp : pair.second) {
-        if (pp->owner == 0 || pp->owner == 2 || 
-            pp->bi == 0 || pp->drive_type != 0) { tmp.clear(); break; }
-        else { tmp.push_back(pp->u.i.in); }
+        if (pp->primary == 1 && top == 0) { tmp.clear(); break; }
+        tmp.push_back(pp);
+        if (pp->bi == 1) { bp = 1; }
       }
-      sort(tmp.begin(),tmp.end());
-      tmp_i = std::unique(tmp.begin(), tmp.end());
-      tmp.resize(std::distance(tmp.begin(),tmp_i));
-      if (tmp.size() == 1) {
-        for (auto pp : pair.second) { pp->dir = 0; }
+      if (bp == 1) {
+        for (auto pp : tmp) {
+          if (pp->owner == 1 && (pp->bi == 1 || pp->dir == 1) && pp->drive_type == 0) {
+            pp->dir = 0;
+            pp->bi = 1;
+          }
+        }
+        bp = 0;
       }
       tmp.clear();
     }

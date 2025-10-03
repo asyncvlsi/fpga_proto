@@ -812,7 +812,7 @@ void print_vars (node *n, std::string &vs)
   return;
 }
 
-void print_module_port (port *p, int &cnt, std::string &mh)
+void print_module_port (port *p, int &cnt, int top, std::string &mh)
 {
   char buf[1024];
 
@@ -834,6 +834,7 @@ void print_module_port (port *p, int &cnt, std::string &mh)
     }
   } else {
     for (auto i = 0; i < cps; i++) {
+      if (p->u.p.n->proc && p->bi && top) { continue; }
       mh += "\t,input\t\t\t\\";
       mh += buf;
       if (p->u.p.n->proc && p->bi) { print_bi_dir(p, mh); }
@@ -854,6 +855,9 @@ void print_module_ports (node *n, std::string &mh)
 {
   char buf[1024];
   int cnt = 0;
+  int top = 0;
+
+  if (!n->next) { top = 1; }
 
   mh += "\t input\t\t\t\\clock\n";
   for (auto gp : n->gp) {
@@ -865,7 +869,7 @@ void print_module_ports (node *n, std::string &mh)
 
   int idr_num = 0;
   for (auto p : n->p) {
-    print_module_port(p, cnt, mh);
+    print_module_port(p, cnt, top, mh);
   }
   return;
 }
