@@ -1268,7 +1268,15 @@ void CHPData::GetSuffix(std::string &str, int func) {
   if (type == 1 || type == 6) {
     cid = u.recv.chan->Canonical(s);
   } else if (type == 2 || type == 4 || type == 5) {
-    cid = id->Canonical(s);
+    if (id->isDynamicDeref()) {
+      ActId *tmp;
+      tmp = new ActId (id->getName(), NULL);
+      cid = tmp->Canonical (s);
+      delete tmp;
+    }
+    else {
+      cid = id->Canonical(s);
+    }
   }
   if (scope->IsPort(cid) == 0 && func == 0) {
     str = "_valid";
