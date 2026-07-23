@@ -193,153 +193,46 @@ void RequireSignExtendFunc (int from, int to) {
   }
 }
 
+/* unary and binary operators only */
+static const char *_exprop (int type)
+{
+  switch (type) {
+  case E_AND: return "&"; break;
+  case E_OR: return "|"; break;
+  case E_XOR: return "^"; break;
+    
+  case E_NOT: return "~"; break;
+  case E_COMPLEMENT: return "~"; break;
+  case E_UMINUS: return "-"; break;
+    
+  case E_PLUS: return "+"; break;
+  case E_MINUS: return "-"; break;
+  case E_MULT: return "*"; break;
+  case E_DIV: return "/"; break;
+  case E_MOD: return "%"; break;
+    
+  case E_LSL: return "<<"; break;
+  case E_LSR: return ">>"; break;
+  case E_ASR: return ">>>"; break;
 
- int GetExprResWidth (Expr *e, StateMachine *scope) {
+  case E_LT: return "<"; break;
+  case E_GT: return ">"; break;
+  case E_LE: return "<="; break;
+  case E_GE: return ">="; break;
+  case E_EQ: return "=="; break;
+  case E_NE: return "!="; break;
 
-  unsigned long l = 0;
-  unsigned long r = 0;
-
-  switch (e->type) {
-    case (E_AND):
-    case (E_OR):
-    case (E_XOR):
-    case (E_PLUS):
-    case (E_MINUS):
-      return GetExprResWidth(e->u.e.l, scope);
-      break;
-    case (E_MULT):
-      l = GetExprResWidth(e->u.e.l, scope);
-      r = GetExprResWidth(e->u.e.r, scope);
-      return l + r;
-      break;
-    case (E_DIV):
-      return GetExprResWidth(e->u.e.l, scope);
-      break;
-    case (E_MOD):
-    case (E_LSL):
-    case (E_LSR):
-    case (E_ASR):
-      return GetExprResWidth(e->u.e.l, scope);
-      break;
-    case (E_NOT):
-    case (E_UMINUS):
-      break;
-    case (E_LT): 
-    case (E_GT): 
-    case (E_LE): 
-    case (E_GE): 
-    case (E_EQ): 
-    case (E_NE):
-    case (E_TRUE):
-    case (E_FALSE):
-      return 1;
-      break;
-    case (E_QUERY):
-      l = GetExprResWidth(e->u.e.r->u.e.l, scope);
-      r = GetExprResWidth(e->u.e.r->u.e.r, scope);
-      if (l > r) return l;
-      else return r;
-      break;
-    case (E_LPAR): 
-    case (E_RPAR):
-    case (E_COLON):
-    case (E_PROBE):
-    case (E_COMMA):
-    case (E_ANDLOOP):
-    case (E_ORLOOP):
-    case (E_RAWFREE):
-    case (E_END):
-    case (E_NUMBER):
-    case (E_FUNCTION):
-      return 0;
-      break;
-    case (E_INT): {
-      BigInt *bi;
-      if (e->u.ival.v_extra) {
-        bi = (BigInt*)e->u.ival.v_extra;
-        if (bi->getWidth() == 0) {
-          return 0;
-        } else {
-          return bi->getWidth();
-        }
-      } else {
-        unsigned long tmp1 = 0;
-        unsigned long tmp2 = e->u.ival.v;
-        while (tmp2) {
-          tmp2 = tmp2 >> 1;
-          tmp1 = tmp1 + 1;
-        }
-        if (tmp1 == 0) { tmp1 = 1; }
-        return tmp1;
-      }
-      break;
-    }
-    case (E_VAR): {
-      char tmp[1024];
-      ActId *id;
-      id = (ActId *)e->u.e.l;
-      Scope *act_scope = NULL;
-      act_scope = scope->GetProc()->CurScope();
-      act_boolean_netlist_t *bnl;
-      bnl = BOOL->getBNL(scope->GetProc());
-      ihash_bucket *hb;
-      act_booleanized_var_t *bv;
-      hb = ihash_lookup(bnl->cH,(long)id->Canonical(act_scope));
-      if (hb) {
-        bv = (act_booleanized_var_t *)hb->v;
-        return bv->width;
-      } else {
-        return 0;
-      }
-      break;
-    }
-    case (E_CONCAT): {
-      Expr *tmp_expr = e;
-      while (tmp_expr) {
-        l += GetExprResWidth(tmp_expr->u.e.l, scope);
-        if (tmp_expr->u.e.r) {
-          tmp_expr = tmp_expr->u.e.r;
-        } else { 
-          tmp_expr = NULL; 
-        }
-      }
-      return l;
-      break;
-    }
-    case (E_BITFIELD): {
-      unsigned int l;
-      unsigned int r;
-      l = e->u.e.r->u.e.r->u.ival.v;
-      if (e->u.e.r->u.e.l) {
-        r = e->u.e.r->u.e.l->u.ival.v;
-      } else {
-        r = l;
-      }
-      return l-r+1;
-      break;
-    }
-    case (E_COMPLEMENT):
-      return GetExprResWidth(e->u.e.l, scope);
-      break;
-    case (E_REAL):
-      return 0;
-      break;
-    case (E_BUILTIN_INT): {
-      if (e->u.e.r) {
-        return e->u.e.r->u.ival.v;
-      } else {
-        return GetExprResWidth(e->u.e.l, scope);
-      }
-      break;
-    }
-    case (E_BUILTIN_BOOL):
-      return 1;
-      break;
-    default:
-      break;
+  default:
+    return "????"; break;
   }
+  return "????";
+}
 
-  return 0;
+static std::string _resize_fn (int from, int to)
+{
+  std::string res;
+  res = "resize_" + std::to_string (from) + "_to_" + std::to_string (to);
+  return res;
 }
 
 static void _PrintExpression(struct pHashtable *H,
@@ -349,46 +242,83 @@ static void _PrintExpression(struct pHashtable *H,
   else if (e->type == E_CONCAT || e->type == E_COMMA || e->type == E_VAR || e->type == E_INT) { str = str; }
   else { str += "("; }
 
-#define BIN_CMP					\
-  phash_bucket_t *bl, *br;			\
-  bl = phash_lookup (H, e->u.e.l);		\
-  br = phash_lookup (H, e->u.e.r);		\
-  if (bl->i > br->i) {				\
-    RequireResizeFunc (br->i, bl->i);		\
-  }						\
-  else if (bl->i < br->i) {			\
-    RequireResizeFunc (bl->i, br->i);		\
-  }
+#define BIN_EQUALIZE__WIDTHS				\
+  do {							\
+     phash_bucket_t *bl, *br;				\
+     bl = phash_lookup (H, e->u.e.l);			\
+     br = phash_lookup (H, e->u.e.r);			\
+     if (bl->i > br->i) {				\
+       RequireResizeFunc (br->i, bl->i);		\
+     }							\
+     else if (bl->i < br->i) {				\
+       RequireResizeFunc (bl->i, br->i);		\
+     }							\
+     if (br->i > bl->i) {				\
+       str += _resize_fn (bl->i, br->i) + "(";		\
+     }							\
+     _PrintExpression(H, e->u.e.l, scope, str);		\
+     if (br->i > bl->i) {				\
+       str += ")";					\
+     }							\
+     str += _exprop (e->type);				\
+     if (bl->i > br->i) {				\
+       str += _resize_fn (br->i, bl->i) + "(";		\
+     }							\
+     _PrintExpression(H, e->u.e.r, scope, str);		\
+     if (bl->i > br->i) {				\
+       str += ")";					\
+     }							\
+  } while (0)
   
   switch (e->type) {
-    case (E_AND): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " & "; _PrintExpression(H, e->u.e.r, scope, str);
+    /*
+      If we equalize the bitwidths of the LHS and RHS, we get the
+      same result as the ACT bitwidth rules
+    */
+    case (E_AND): 
+    case (E_OR):
+    case (E_XOR): 
+    case (E_LT):
+    case (E_GT):
+    case E_LE:
+    case E_GE:
+    case E_EQ:
+    case E_NE:
+      BIN_EQUALIZE__WIDTHS;
       break;
-    }
-    case (E_OR): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " | "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_NOT): {
+
+    /* ACT and Verilog rules are the same */
+    case (E_NOT):
+    case E_UMINUS:
+    case E_COMPLEMENT:
       _PrintExpression(H, e->u.e.l, scope, str);
       break;
-    }
+
+    /*
+      ACT rules add one bit to the result; we extend each operand by
+      one bit to make the Verilog match
+    */
     case (E_PLUS): {
       phash_bucket_t *b;
       b = phash_lookup (H, e->u.e.l);
       Assert (b, "Hmm");
       RequireResizeFunc (b->i, b->i+1);
-      str += "resize_" + std::to_string (b->i) + "_to_" + std::to_string (b->i+1) + "(";
+      str += _resize_fn (b->i, b->i+1) + "(";
       _PrintExpression(H, e->u.e.l, scope, str);
       str += ")";
       b = phash_lookup (H, e->u.e.r);
       RequireResizeFunc (b->i, b->i+1);
       str += " + ";
-      str += "resize_" + std::to_string (b->i) + "_to_" + std::to_string (b->i+1) + "(";
+      str += _resize_fn (b->i, b->i+1) + "(";
       _PrintExpression(H, e->u.e.r, scope, str);
       str += ")";
       break;
     }
+      
+    /*
+      ACT rules add one bit to the result; we sign extend the LHS
+      to make the Verilog match
+    */
     case (E_MINUS): {
       phash_bucket_t *b, *b2;
       b = phash_lookup (H, e->u.e.l);
@@ -405,6 +335,7 @@ static void _PrintExpression(struct pHashtable *H,
       _PrintExpression(H, e->u.e.l, scope, str); str += ") - "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
+      
     case (E_MULT): {
       phash_bucket_t *bl, *br;
       bl = phash_lookup (H, e->u.e.l);
@@ -412,39 +343,43 @@ static void _PrintExpression(struct pHashtable *H,
       Assert (bl && br, "Hmm");
       RequireResizeFunc (bl->i, bl->i+br->i);
       RequireResizeFunc (br->i, bl->i+br->i);
-      str += "resize_" + std::to_string (bl->i) + "_to_" + std::to_string (bl->i+br->i) + "(";
-      _PrintExpression(H, e->u.e.l, scope, str); str += ") * resize_";
-      str += std::to_string (br->i) + "_to_" + std::to_string (bl->i+br->i) + "(";
+      str += _resize_fn (bl->i, bl->i + br->i) + "(";
+      _PrintExpression(H, e->u.e.l, scope, str); str += ") * ";
+      str += _resize_fn (br->i, bl->i + br->i) + "(";
       _PrintExpression(H, e->u.e.r, scope, str);
       str += ")";
       break;
     }
-    case (E_DIV): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " / "; _PrintExpression(H, e->u.e.r, scope, str);
-      
-      break;
-    }
-    case (E_MOD): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " % "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_LSL): {
-      phash_bucket_t *arg, *me;
-      me = phash_lookup (H, e);
-      arg = phash_lookup (H, e->u.e.l);
-      Assert (me && arg, "Hmm");
-      if (me->i != arg->i) {
-	RequireResizeFunc (arg->i, me->i);
-	str += "resize_" + std::to_string(arg->i) + "_to_" +
-	  std::to_string (me->i) + "(";
+
+    case (E_DIV):
+    case (E_MOD):
+      {
+	phash_bucket_t *bl, *br, *b;
+	int m;
+	bl = phash_lookup (H, e->u.e.l);
+	br = phash_lookup (H, e->u.e.r);
+	if (bl->i > br->i) {
+	  m = bl->i;
+	}
+	else {
+	  m = br->i;
+	}
+	b = phash_lookup (H, e);
+	if (b->i != m) {
+	  /* bit-width rules disagree */
+	  RequireResizeFunc (m, b->i);
+	  str += _resize_fn (m, b->i) + "(";
+	}
+	_PrintExpression(H, e->u.e.l, scope, str);
+	str += _exprop (e->type);
+	_PrintExpression(H, e->u.e.r, scope, str);
+	if (b->i != m) {
+	  str += ")";
+	}
       }
-      _PrintExpression(H, e->u.e.l, scope, str);
-      if (me->i != arg->i) {
-	str += ")";
-      }
-      str += " << "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
-    }
+
+    case (E_LSL):
     case (E_LSR): {
       phash_bucket_t *arg, *me;
       me = phash_lookup (H, e);
@@ -452,16 +387,18 @@ static void _PrintExpression(struct pHashtable *H,
       Assert (me && arg, "Hmm");
       if (me->i != arg->i) {
 	RequireResizeFunc (arg->i, me->i);
-	str += "resize_" + std::to_string(arg->i) + "_to_" +
-	  std::to_string (me->i) + "(";
+	str += _resize_fn (arg->i, me->i) + "(";
       }
       _PrintExpression(H, e->u.e.l, scope, str);
       if (me->i != arg->i) {
 	str += ")";
       }
-      str += " >> "; _PrintExpression(H, e->u.e.r, scope, str);
+      str += _exprop (e->type);
+      _PrintExpression(H, e->u.e.r, scope, str);
+     }
       break;
-    }
+
+      /* same as above, but need sign extension */
     case (E_ASR): {
       phash_bucket_t *arg, *me;
       me = phash_lookup (H, e);
@@ -476,58 +413,11 @@ static void _PrintExpression(struct pHashtable *H,
       if (me->i != arg->i) {
 	str += ")";
       }
-      str += " >>> "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_UMINUS): {
-      _PrintExpression(H, e->u.e.l, scope, str);
-      break;
-    }
-    case (E_XOR): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " ^ "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_LT): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " < "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_GT): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " > "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_LE): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " <= "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;  
-    }
-    case (E_GE): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " >= "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
-    case (E_EQ): {
-      BIN_CMP;
-      if (br->i > bl->i) {
-	str += "resize_" + std::to_string (bl->i) +
-	  "_to_" + std::to_string (br->i) + "(";
-      }
-      _PrintExpression(H, e->u.e.l, scope, str);
-      if (br->i > bl->i) {
-	str += ")";
-      }
-      str += " == ";
-      if (bl->i > br->i) {
-	str += "resize_" + std::to_string (br->i) +
-	  "_to_" + std::to_string (bl->i) + "(";
-      }
+      str += " >>> ";
       _PrintExpression(H, e->u.e.r, scope, str);
-      if (bl->i > br->i) {
-	str += ")";
-      }
       break;
     }
-    case (E_NE): {
-      _PrintExpression(H, e->u.e.l, scope, str); str += " != "; _PrintExpression(H, e->u.e.r, scope, str);
-      break;
-    }
+
     case (E_INT): {
       BigInt *bi;
       if (e->u.ival.v_extra) {
@@ -542,6 +432,17 @@ static void _PrintExpression(struct pHashtable *H,
       }
       break;
     }
+
+    case (E_TRUE): {
+      str += " 1'b1 ";
+      break;  
+    }
+
+    case (E_FALSE): {
+      str += " 1'b0 ";
+      break;
+    }
+
     case (E_VAR): {
       char tmp[1024];
       ActId *id;
@@ -579,31 +480,15 @@ static void _PrintExpression(struct pHashtable *H,
       }
       break;
     }
+
     case (E_QUERY): {
       _PrintExpression(H, e->u.e.l, scope, str); str += " ? ";
-      _PrintExpression(H, e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; _PrintExpression(H, e->u.e.r->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.r->u.e.l, scope, str);
+      str += " : \n\t\t";
+      _PrintExpression(H, e->u.e.r->u.e.r, scope, str);
       break;
     }
-    case (E_LPAR): {
-      str += "LPAR\n";
-      break;
-    }
-    case (E_RPAR): {
-      str += "RPAR\n";
-      break;
-    }
-    case (E_TRUE): {
-      str += " 1'b1 ";
-      break;  
-    }
-    case (E_FALSE): {
-      str += " 1'b0 ";
-      break;
-    }
-    case (E_COLON): {
-      str += " : ";
-      break;
-    }
+
     case (E_PROBE): {
       char tmp[1024];
       ActId *id;
@@ -649,7 +534,7 @@ static void _PrintExpression(struct pHashtable *H,
       }
       break;
     }
-    case (E_COMMA):
+
     case (E_CONCAT): {
       str += "{";
       Expr *tmp_expr = e;
@@ -665,6 +550,7 @@ static void _PrintExpression(struct pHashtable *H,
       str += " }";
       break;
     }
+
     case (E_BITFIELD): {
       if (e->u.e.l->type != E_VAR) {
 	str += "( ( (";
@@ -690,37 +576,49 @@ static void _PrintExpression(struct pHashtable *H,
 	str += ")";
       }
       else {
-	if (l!=r) {
-	  str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
-	} else {
-	  str = str + " [" + std::to_string(r) + "]";
+	phash_bucket_t *b;
+	b = phash_lookup (H, e->u.e.l);
+	if (l >= b->i) {
+	  // violation of bitwidth rules; we need to resize
+	  if (r > b->i-1) {
+	    NeedResizeFunc (1, l-r+1);
+	    str += _resize_fn (1, l-r+1) + "(1'b0)";
+	  }
+	  else {
+	    NeedResizeFunc (b->i-r, l-r+1);
+	    str += _resize_fn (b->i-r, l-r+1) + "(";
+	    l = b->i-1;
+	    if (l != r) {
+	      str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
+	    } else {
+	      str = str + " [" + std::to_string(r) + "]";
+	    }
+	    str += ")";
+	  }
+	}
+	else {
+	  if (l != r) {
+	    str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
+	  } else {
+	    str = str + " [" + std::to_string(r) + "]";
+	  }
 	}
       }
       break;
     }
-    case (E_COMPLEMENT): {
-      _PrintExpression(H, e->u.e.l, scope, str);
-      break;
-    }
+
     case (E_REAL): {
       str += std::to_string(e->u.ival.v);
       break;
     }
-    case (E_ANDLOOP): {
-      str += "ANDLOOP you mean?\n";
-      break;
-    }
-    case (E_ORLOOP): {
-      str += "ORLOOP you mean?\n";
-      break;
-    }
+
     case (E_BUILTIN_INT): {
       phash_bucket_t *me, *arg;
       arg = phash_lookup (H, e->u.e.l);
       me = phash_lookup (H, e);
       if (me->i != arg->i) {
 	RequireResizeFunc (arg->i, me->i);
-	str += "resize_" + std::to_string (arg->i) + "_to_" + std::to_string (me->i) + "(";
+	str += _resize_fn (arg->i, me->i) + "(";
       }
       _PrintExpression (H, e->u.e.l, scope, str);
       if (me->i != arg->i) {
@@ -728,26 +626,12 @@ static void _PrintExpression(struct pHashtable *H,
       }
       break;
     }
+
     case (E_BUILTIN_BOOL): {
       _PrintExpression(H, e->u.e.l, scope, str);
       break;
     }
-    case (E_RAWFREE): {
-      str += "RAWFREE\n";
-      break;
-    }
-    case (E_END): {
-      str += "END\n";
-      break;
-    }
-    case (E_NUMBER): {
-      str += "NUMBER\n";
-      break;
-    }
-    case (E_FUNCTION): {
-      str += "FUNCTION\n";
-      break;
-    }
+
     default: {
       str += "Whaaat?! "; str += std::to_string(e->type); str += "\n";
       break;
