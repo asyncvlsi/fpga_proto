@@ -344,7 +344,8 @@ static void _PrintExpression(struct pHashtable *H,
       RequireResizeFunc (bl->i, bl->i+br->i);
       RequireResizeFunc (br->i, bl->i+br->i);
       str += _resize_fn (bl->i, bl->i + br->i) + "(";
-      _PrintExpression(H, e->u.e.l, scope, str); str += ") * ";
+      _PrintExpression(H, e->u.e.l, scope, str);
+      str += ") * ";
       str += _resize_fn (br->i, bl->i + br->i) + "(";
       _PrintExpression(H, e->u.e.r, scope, str);
       str += ")";
@@ -364,6 +365,7 @@ static void _PrintExpression(struct pHashtable *H,
 	else {
 	  m = br->i;
 	}
+	/* m is the max */
 	b = phash_lookup (H, e);
 	if (b->i != m) {
 	  /* bit-width rules disagree */
@@ -386,6 +388,7 @@ static void _PrintExpression(struct pHashtable *H,
       arg = phash_lookup (H, e->u.e.l);
       Assert (me && arg, "Hmm");
       if (me->i != arg->i) {
+	/* bitwidth rules disagree */
 	RequireResizeFunc (arg->i, me->i);
 	str += _resize_fn (arg->i, me->i) + "(";
       }
@@ -552,10 +555,7 @@ static void _PrintExpression(struct pHashtable *H,
     }
 
     case (E_BITFIELD): {
-      if (e->u.e.l->type != E_VAR) {
-	str += "( ( (";
-      }
-      _PrintExpression (H, e->u.e.l, scope, str);
+      phash_bucket_t *b;
       unsigned int l;
       unsigned int r;
       l = e->u.e.r->u.e.r->u.ival.v;
@@ -564,45 +564,16 @@ static void _PrintExpression(struct pHashtable *H,
       } else {
         r = l;
       }
-      if (e->u.e.l->type != E_VAR) {
-	str += ") ";
-	if (r != 0) {
-	  str += ">> " + std::to_string (r);
-	}
-	str += ") & " + std::to_string (l - r + 1) + "'b";
-	for (int i=0; i < l - r + 1; i++) {
-	  str += "1";
-	}
-	str += ")";
+      b = phash_lookup (H, e->u.e.l);
+      if (l - r + 1 == b->i) {
+	_PrintExpression (H, e->u.e.l, scope, str);
+	str += " >> " + std::to_string (r);
       }
       else {
-	phash_bucket_t *b;
-	b = phash_lookup (H, e->u.e.l);
-	if (l >= b->i) {
-	  // violation of bitwidth rules; we need to resize
-	  if (r > b->i-1) {
-	    NeedResizeFunc (1, l-r+1);
-	    str += _resize_fn (1, l-r+1) + "(1'b0)";
-	  }
-	  else {
-	    NeedResizeFunc (b->i-r, l-r+1);
-	    str += _resize_fn (b->i-r, l-r+1) + "(";
-	    l = b->i-1;
-	    if (l != r) {
-	      str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
-	    } else {
-	      str = str + " [" + std::to_string(r) + "]";
-	    }
-	    str += ")";
-	  }
-	}
-	else {
-	  if (l != r) {
-	    str = str + " [" + std::to_string(l) + ":" + std::to_string(r) + "]";
-	  } else {
-	    str = str + " [" + std::to_string(r) + "]";
-	  }
-	}
+	RequireResizeFunc (b->i, l-r+1);
+	str += _resize_fn (b->i, l-r+1) + "(";
+	_PrintExpression (H, e->u.e.l, scope, str);
+	str += " >> " + std::to_string (r) + ")";
       }
       break;
     }
