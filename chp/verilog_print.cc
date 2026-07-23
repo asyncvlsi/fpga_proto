@@ -16,6 +16,7 @@ FILE *func_file = stdout;
 extern ActBooleanizePass *BOOL;
 
 std::map<int,std::vector<int>> resize_func_tracker;
+std::map<int,std::vector<int>> signextend_func_tracker;
 
 void get_module_name (Process *p, std::string &str) {
 
@@ -118,6 +119,22 @@ bool NeedResizeFunc(int from, int to) {
   return true;
 }
 
+bool NeedSignExtendFunc(int from, int to) {
+
+  if (signextend_func_tracker.find(from) != signextend_func_tracker.end()) {
+    if (std::find(signextend_func_tracker[from].begin(),
+                  signextend_func_tracker[from].end(),to) != 
+                    signextend_func_tracker[from].end()) {
+      return false;
+    }
+  }
+
+  signextend_func_tracker[from].push_back(to);
+
+  return true;
+}
+ 
+ 
 void PrintResizeFunc(int from, int to) {
   std::string func;
   std::string s_from = std::to_string(from);
@@ -139,7 +156,45 @@ void PrintResizeFunc(int from, int to) {
   fprintf(func_file,"%s",func.c_str());
 }
 
-int GetExprResWidth (Expr *e, StateMachine *scope) {
+void PrintSignExtendFunc(int from, int to) {
+  if (from > to) {
+    warning ("Not sure why this happened, signextend %d to %d\n", from, to);
+  }
+  std::string func;
+  std::string s_from = std::to_string(from);
+  std::string s_to = std::to_string(to);
+  std::string func_name = "signextend_" + s_from + "_to_" + s_to;
+  func = "function [" + s_to + "-1:0] " + func_name + ";\n";
+  func = func + "  input [" + s_from + "-1:0] in;\n  begin\n";
+  if (from > to) {
+    func = func + "    " + func_name + " = in[" + s_to + "-1:0];\n";
+  } else if (to > from) {
+    int delta = to - from;
+    std::string s_zero = "{" + std::to_string(delta) + "{in[" +
+      std::to_string (from-1) + "]}}";
+    func = func + "    " + func_name + " = {" + s_zero + ",in};\n";
+  } else {
+    func = func + "    " + func_name + " = in;\n";
+  }
+  func = func + "  end\n";
+  func += "endfunction\n\n";
+  fprintf(func_file,"%s",func.c_str());
+}
+ 
+void RequireResizeFunc (int from, int to) {
+  if (NeedResizeFunc (from, to)) {
+    PrintResizeFunc (from, to);
+  }
+}
+
+void RequireSignExtendFunc (int from, int to) {
+  if (NeedSignExtendFunc (from, to)) {
+    PrintSignExtendFunc (from, to);
+  }
+}
+
+
+ int GetExprResWidth (Expr *e, StateMachine *scope) {
 
   unsigned long l = 0;
   unsigned long r = 0;
@@ -287,86 +342,190 @@ int GetExprResWidth (Expr *e, StateMachine *scope) {
   return 0;
 }
 
-void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
+static void _PrintExpression(struct pHashtable *H,
+			     Expr *e, StateMachine *scope, std::string &str) {
   if (e->type == E_NOT || e->type == E_COMPLEMENT) { str += " ~("; } 
   else if (e->type == E_UMINUS) { str += " -("; } 
   else if (e->type == E_CONCAT || e->type == E_COMMA || e->type == E_VAR || e->type == E_INT) { str = str; }
   else { str += "("; }
+
+#define BIN_CMP					\
+  phash_bucket_t *bl, *br;			\
+  bl = phash_lookup (H, e->u.e.l);		\
+  br = phash_lookup (H, e->u.e.r);		\
+  if (bl->i > br->i) {				\
+    RequireResizeFunc (br->i, bl->i);		\
+  }						\
+  else if (bl->i < br->i) {			\
+    RequireResizeFunc (bl->i, br->i);		\
+  }
+  
   switch (e->type) {
     case (E_AND): {
-      PrintExpression(e->u.e.l, scope, str); str += " & "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " & "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_OR): {
-      PrintExpression(e->u.e.l, scope, str); str += " | "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " | "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_NOT): {
-      PrintExpression(e->u.e.l, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str);
       break;
     }
     case (E_PLUS): {
-      PrintExpression(e->u.e.l, scope, str); str += " + "; PrintExpression(e->u.e.r, scope, str);
+      phash_bucket_t *b;
+      b = phash_lookup (H, e->u.e.l);
+      Assert (b, "Hmm");
+      RequireResizeFunc (b->i, b->i+1);
+      str += "resize_" + std::to_string (b->i) + "_to_" + std::to_string (b->i+1) + "(";
+      _PrintExpression(H, e->u.e.l, scope, str);
+      str += ")";
+      b = phash_lookup (H, e->u.e.r);
+      RequireResizeFunc (b->i, b->i+1);
+      str += " + ";
+      str += "resize_" + std::to_string (b->i) + "_to_" + std::to_string (b->i+1) + "(";
+      _PrintExpression(H, e->u.e.r, scope, str);
+      str += ")";
       break;
     }
     case (E_MINUS): {
-      PrintExpression(e->u.e.l, scope, str); str += " - "; PrintExpression(e->u.e.r, scope, str);
+      phash_bucket_t *b, *b2;
+      b = phash_lookup (H, e->u.e.l);
+      b2 = phash_lookup (H, e);
+      Assert (b && b2, "Hmm");
+      if (b2->i != b->i) {
+	RequireSignExtendFunc (b->i, b2->i);
+	str += "signextend_" + std::to_string (b->i) + "_to_" +
+	  std::to_string (b2->i) + "(";
+      }
+      else {
+	str += "(";
+      }
+      _PrintExpression(H, e->u.e.l, scope, str); str += ") - "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_MULT): {
-      PrintExpression(e->u.e.l, scope, str); str += " * "; PrintExpression(e->u.e.r, scope, str);
+      phash_bucket_t *bl, *br;
+      bl = phash_lookup (H, e->u.e.l);
+      br = phash_lookup (H, e->u.e.r);
+      Assert (bl && br, "Hmm");
+      RequireResizeFunc (bl->i, bl->i+br->i);
+      RequireResizeFunc (br->i, bl->i+br->i);
+      str += "resize_" + std::to_string (bl->i) + "_to_" + std::to_string (bl->i+br->i) + "(";
+      _PrintExpression(H, e->u.e.l, scope, str); str += ") * resize_";
+      str += std::to_string (br->i) + "_to_" + std::to_string (bl->i+br->i) + "(";
+      _PrintExpression(H, e->u.e.r, scope, str);
+      str += ")";
       break;
     }
     case (E_DIV): {
-      PrintExpression(e->u.e.l, scope, str); str += " / "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " / "; _PrintExpression(H, e->u.e.r, scope, str);
+      
       break;
     }
     case (E_MOD): {
-      PrintExpression(e->u.e.l, scope, str); str += " % "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " % "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_LSL): {
-      PrintExpression(e->u.e.l, scope, str); str += " << "; PrintExpression(e->u.e.r, scope, str);
+      phash_bucket_t *arg, *me;
+      me = phash_lookup (H, e);
+      arg = phash_lookup (H, e->u.e.l);
+      Assert (me && arg, "Hmm");
+      if (me->i != arg->i) {
+	RequireResizeFunc (arg->i, me->i);
+	str += "resize_" + std::to_string(arg->i) + "_to_" +
+	  std::to_string (me->i) + "(";
+      }
+      _PrintExpression(H, e->u.e.l, scope, str);
+      if (me->i != arg->i) {
+	str += ")";
+      }
+      str += " << "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_LSR): {
-      PrintExpression(e->u.e.l, scope, str); str += " >> "; PrintExpression(e->u.e.r, scope, str);
+      phash_bucket_t *arg, *me;
+      me = phash_lookup (H, e);
+      arg = phash_lookup (H, e->u.e.l);
+      Assert (me && arg, "Hmm");
+      if (me->i != arg->i) {
+	RequireResizeFunc (arg->i, me->i);
+	str += "resize_" + std::to_string(arg->i) + "_to_" +
+	  std::to_string (me->i) + "(";
+      }
+      _PrintExpression(H, e->u.e.l, scope, str);
+      if (me->i != arg->i) {
+	str += ")";
+      }
+      str += " >> "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_ASR): {
-      PrintExpression(e->u.e.l, scope, str); str += " >>> "; PrintExpression(e->u.e.r, scope, str);
+      phash_bucket_t *arg, *me;
+      me = phash_lookup (H, e);
+      arg = phash_lookup (H, e->u.e.l);
+      Assert (me && arg, "Hmm");
+      if (me->i != arg->i) {
+	RequireSignExtendFunc (arg->i, me->i);
+	str += "signextend_" + std::to_string(arg->i) + "_to_" +
+	  std::to_string (me->i) + "(";
+      }
+      _PrintExpression(H, e->u.e.l, scope, str);
+      if (me->i != arg->i) {
+	str += ")";
+      }
+      str += " >>> "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_UMINUS): {
-      PrintExpression(e->u.e.l, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str);
       break;
     }
     case (E_XOR): {
-      PrintExpression(e->u.e.l, scope, str); str += " ^ "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " ^ "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_LT): {
-      PrintExpression(e->u.e.l, scope, str); str += " < "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " < "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_GT): {
-      PrintExpression(e->u.e.l, scope, str); str += " > "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " > "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_LE): {
-      PrintExpression(e->u.e.l, scope, str); str += " <= "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " <= "; _PrintExpression(H, e->u.e.r, scope, str);
       break;  
     }
     case (E_GE): {
-      PrintExpression(e->u.e.l, scope, str); str += " >= "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " >= "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_EQ): {
-      PrintExpression(e->u.e.l, scope, str); str += " == "; PrintExpression(e->u.e.r, scope, str);
+      BIN_CMP;
+      if (br->i > bl->i) {
+	str += "resize_" + std::to_string (bl->i) +
+	  "_to_" + std::to_string (br->i) + "(";
+      }
+      _PrintExpression(H, e->u.e.l, scope, str);
+      if (br->i > bl->i) {
+	str += ")";
+      }
+      str += " == ";
+      if (bl->i > br->i) {
+	str += "resize_" + std::to_string (br->i) +
+	  "_to_" + std::to_string (bl->i) + "(";
+      }
+      _PrintExpression(H, e->u.e.r, scope, str);
+      if (bl->i > br->i) {
+	str += ")";
+      }
       break;
     }
     case (E_NE): {
-      PrintExpression(e->u.e.l, scope, str); str += " != "; PrintExpression(e->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " != "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
     case (E_INT): {
@@ -398,6 +557,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
         if (!dv) {
           id->Canonical(act_scope)->toid()->sPrint(tmp,1024);
           str += tmp;
+	  str += " ";
         } else {
           print_array_ref(id, scope, str);
         }
@@ -415,12 +575,13 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
         } else {
           str += tmp;
         }
+	str += " ";
       }
       break;
     }
     case (E_QUERY): {
-      PrintExpression(e->u.e.l, scope, str); str += " ? ";
-      PrintExpression(e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; PrintExpression(e->u.e.r->u.e.r, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str); str += " ? ";
+      _PrintExpression(H, e->u.e.r->u.e.l, scope, str); str += " : \n\t\t"; _PrintExpression(H, e->u.e.r->u.e.r, scope, str);
       break;
     }
     case (E_LPAR): {
@@ -493,7 +654,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       str += "{";
       Expr *tmp_expr = e;
       while (tmp_expr) {
-        PrintExpression(tmp_expr->u.e.l, scope, str);
+        _PrintExpression(H, tmp_expr->u.e.l, scope, str);
         if (tmp_expr->u.e.r) {
           str += " ,";
           tmp_expr = tmp_expr->u.e.r;
@@ -508,7 +669,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       if (e->u.e.l->type != E_VAR) {
 	str += "( ( (";
       }
-      PrintExpression (e->u.e.l, scope, str);
+      _PrintExpression (H, e->u.e.l, scope, str);
       unsigned int l;
       unsigned int r;
       l = e->u.e.r->u.e.r->u.ival.v;
@@ -538,7 +699,7 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_COMPLEMENT): {
-      PrintExpression(e->u.e.l, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str);
       break;
     }
     case (E_REAL): {
@@ -554,37 +715,21 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
       break;
     }
     case (E_BUILTIN_INT): {
-      int tmp1, tmp2;
-      if (e->u.e.r) {
-        if (e->u.e.l->type == E_INT || e->u.e.l->type == E_VAR) {
-          str.pop_back();
-          PrintExpression(e->u.e.l, scope, str);
-          return;
-        } else {
-          tmp1 = GetExprResWidth(e->u.e.l, scope);
-          tmp2 = e->u.e.r->u.ival.v;
-          if (tmp1 != tmp2) {
-            if (NeedResizeFunc(tmp1,tmp2)) {
-              PrintResizeFunc(tmp1,tmp2);
-            }
-            str += "resize_";
-            str += std::to_string(tmp1);
-            str += "_to_";
-            str += std::to_string(tmp2);
-            str += "(";
-            PrintExpression(e->u.e.l, scope, str);
-            str += " )";
-          } else {
-            PrintExpression(e->u.e.l, scope, str);
-          }
-        }
-      } else {
-        PrintExpression(e->u.e.l, scope, str);
+      phash_bucket_t *me, *arg;
+      arg = phash_lookup (H, e->u.e.l);
+      me = phash_lookup (H, e);
+      if (me->i != arg->i) {
+	RequireResizeFunc (arg->i, me->i);
+	str += "resize_" + std::to_string (arg->i) + "_to_" + std::to_string (me->i) + "(";
+      }
+      _PrintExpression (H, e->u.e.l, scope, str);
+      if (me->i != arg->i) {
+	str += ")";
       }
       break;
     }
     case (E_BUILTIN_BOOL): {
-      PrintExpression(e->u.e.l, scope, str);
+      _PrintExpression(H, e->u.e.l, scope, str);
       break;
     }
     case (E_RAWFREE): {
@@ -614,6 +759,21 @@ void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
   return;
 }
 
+void PrintExpression(Expr *e, StateMachine *scope, std::string &str) {
+  struct pHashtable *H;
+  Scope *sc = scope->GetProc()->CurScope();
+  if (!sc) {
+    H = NULL;
+  }
+  else {
+    H = act_expr_bw_calc (sc, e);
+  }
+  _PrintExpression (H, e, scope, str);
+  if (H) {
+    phash_free (H);
+  }
+}
+  
 void Condition::PrintScopeVar(StateMachine *sc, std::string &name){
 
   name = name + "sm" + std::to_string(sc->GetNum()) + "_";
