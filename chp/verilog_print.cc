@@ -298,6 +298,7 @@ static void _PrintExpression(struct pHashtable *H,
       ACT rules add one bit to the result; we extend each operand by
       one bit to make the Verilog match
     */
+    case (E_MINUS):
     case (E_PLUS): {
       phash_bucket_t *b;
       b = phash_lookup (H, e->u.e.l);
@@ -308,31 +309,10 @@ static void _PrintExpression(struct pHashtable *H,
       str += ")";
       b = phash_lookup (H, e->u.e.r);
       RequireResizeFunc (b->i, b->i+1);
-      str += " + ";
+      str += _exprop (e->type);
       str += _resize_fn (b->i, b->i+1) + "(";
       _PrintExpression(H, e->u.e.r, scope, str);
       str += ")";
-      break;
-    }
-      
-    /*
-      ACT rules add one bit to the result; we sign extend the LHS
-      to make the Verilog match
-    */
-    case (E_MINUS): {
-      phash_bucket_t *b, *b2;
-      b = phash_lookup (H, e->u.e.l);
-      b2 = phash_lookup (H, e);
-      Assert (b && b2, "Hmm");
-      if (b2->i != b->i) {
-	RequireSignExtendFunc (b->i, b2->i);
-	str += "signextend_" + std::to_string (b->i) + "_to_" +
-	  std::to_string (b2->i) + "(";
-      }
-      else {
-	str += "(";
-      }
-      _PrintExpression(H, e->u.e.l, scope, str); str += ") - "; _PrintExpression(H, e->u.e.r, scope, str);
       break;
     }
       
