@@ -472,9 +472,14 @@ void add_instances (Scope *cs, act_boolean_netlist_t *bnl, node *par) {
 
     if (ports_exist == 1) {
       if (vx->t->arrayInfo()) {
-	      Arraystep *as = vx->t->arrayInfo()->stepper();
-	      while (!as->isend()) {
-	        if (vx->isPrimary (as->index())) {
+	Arraystep *as = vx->t->arrayInfo()->stepper();
+	while (!as->isend()) {
+	  if (vx->isPrimary (as->index())) {
+	    if (as->curProc() != i_proc) {
+	      i_proc = as->curProc ();
+	      sub = BOOL->getBNL (i_proc);
+	    }
+
             inst_node *in = new inst_node;
             in->n = NULL;
             in->par = par;

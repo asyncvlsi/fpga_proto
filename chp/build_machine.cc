@@ -1769,6 +1769,13 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
         Arraystep *as = vx->t->arrayInfo()->stepper();
         while (!as->isend()) {
           if (vx->isPrimary (as->index())) {
+	    if (as->curProc() != p) {
+	      p = as->curProc ();
+	      sub = BOOL->getBNL (p);
+	      lang = p->getlang();
+	      lev = get_proc_level(p,inst_id);
+	    }
+	    
             char *ar = as->string();
             smi = new StateMachineInst(p,vx,ar);
             if (lev == ACT_MODEL_CHP && lang->getchp()) {
@@ -2392,7 +2399,18 @@ void collect_chan (Process *p, CHPProject *cp) {
 
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
-    collect_chan (dynamic_cast<Process *>(vx->t->BaseType()), cp);
+    if (vx->t->isMixedArray()) {
+      Array *r = vx->t->arrayInfo();
+      while (r) {
+	Assert (r->getArrayType(), "Hmm");
+	collect_chan  (dynamic_cast<Process *>(r->getArrayType()->BaseType()),
+		       cp);
+	r = r->Next();
+      }
+    }
+    else {
+      collect_chan (dynamic_cast<Process *>(vx->t->BaseType()), cp);
+    }
   }
 
   act_boolean_netlist_t *bnl = BOOL->getBNL(p);
@@ -2454,7 +2472,23 @@ void traverse_act (Process *p, CHPProject *cp, int opt, char *pn) {
 
   for (i = i.begin(); i != i.end(); i++) {
     ValueIdx *vx = *i;
-    traverse_act (dynamic_cast<Process *>(vx->t->BaseType()), cp, opt, pn);
+    Array *r;
+
+    r = vx->t->arrayInfo();
+    do {
+      Process *px;
+      if (!r) {
+	px = dynamic_cast<Process *>(vx->t->BaseType());
+      }
+      else {
+	px = dynamic_cast<Process *>(r->getArrayType()->BaseType());
+      }
+      Assert (px, "What?");
+      traverse_act (px, cp, opt, pn);
+      if (r) {
+	r = r->Next ();
+      }
+    } while (r);
   }
 
   act_chp_lang_t *chp_lang = NULL;
