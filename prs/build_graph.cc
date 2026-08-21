@@ -475,7 +475,7 @@ void add_instances (Scope *cs, act_boolean_netlist_t *bnl, node *par) {
 	Arraystep *as = vx->t->arrayInfo()->stepper();
 	while (!as->isend()) {
 	  if (vx->isPrimary (as->index())) {
-	    if (as->curProc() != i_proc) {
+	    if (as->curProc() && as->curProc() != i_proc) {
 	      i_proc = as->curProc ();
 	      sub = BOOL->getBNL (i_proc);
 	    }

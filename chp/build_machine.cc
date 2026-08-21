@@ -1769,7 +1769,7 @@ void add_instances(CHPProject *cp, act_boolean_netlist_t *bnl, StateMachine *sm)
         Arraystep *as = vx->t->arrayInfo()->stepper();
         while (!as->isend()) {
           if (vx->isPrimary (as->index())) {
-	    if (as->curProc() != p) {
+	    if (as->curProc() && as->curProc() != p) {
 	      p = as->curProc ();
 	      sub = BOOL->getBNL (p);
 	      lang = p->getlang();
